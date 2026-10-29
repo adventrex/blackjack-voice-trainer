@@ -100,6 +100,7 @@
       <button class="btn secondary" data-say="double">Double</button>
       <button class="btn secondary" data-say="split">Split</button>
     </div>
+    <div class="actions" id="betBtns"></div>
     <div class="keypad">
       <button class="btn secondary" id="kMinus">−</button>
       <output id="kVal">0</output>
@@ -117,12 +118,17 @@
         <select id="mode">
           <option value="mic">Talk: I play my hand + answer the count</option>
           <option value="countOnly">Talk: count only (my hand plays itself)</option>
+          <option value="tap">Tap: play with the buttons, no talking</option>
           <option value="listen">Listen only (no mic; count is revealed after a pause)</option>
         </select>
       </label>
       <label>Players at table (including you): <span id="playersVal"></span>
         <input type="range" id="players" min="1" max="7" step="1">
       </label>
+      <label>Voice (best ones listed first)
+        <select id="voice"></select>
+      </label>
+      <button class="btn secondary" id="testVoice">🔊 Test voice</button>
       <label>Speech speed: <span id="rateVal"></span>
         <input type="range" id="rate" min="0.7" max="1.6" step="0.05">
       </label>
@@ -146,6 +152,8 @@
       <p><b>Betting:</b> before each hand you'll hear <b>"Bet?"</b> Say dollars (<b>"ten dollars"</b>) or units of your betting unit (<b>"two"</b>). Default unit is $5; bankroll starts at $500. Work out the <b>true count</b> = running count ÷ decks left, then bet: true count <b>+1 or less → $5</b>, <b>+2 → $10</b>, <b>+3 → $20</b>, <b>+4 → $30</b>, <b>+5 or more → $40</b> (1/2/4/6/8 units). Each +1 of true count is worth about +0.5% to you; the house is ahead until about +1. Bet wrong and it tells you the right bet and why.</p>
       <p>Hit <b>80% over your last 20 count checks</b> and a player is added automatically (up to 7).</p>
       <p>Anytime you're asked something you can also say: <b>repeat</b>, <b>score</b>, <b>pause</b> (then <b>resume</b>), <b>add a player</b>, <b>remove a player</b>, <b>slower</b>, <b>faster</b>.</p>
+      <p><b>Want a better voice on iPhone?</b> Settings → Accessibility → Spoken Content → Voices → English, download a <b>Premium</b> or <b>Enhanced</b> voice (Ava and Zoe sound best), then pick it here under Settings → Voice. Downloaded voices also work with no signal.</p>
+      <p><b>Don't feel like talking?</b> Pick <b>Tap</b> mode and use the buttons. It waits for you with no time limit.</p>
       <p>Rules: 6 decks, dealer stands on soft 17, double after split, one split per hand, reshuffle at 75%. You only hear more than cards when you make a mistake: a wrong play, a wrong count or a wrong bet gets the right answer and why. Say <b>score</b> for your accuracy and bankroll.</p>
     </div>
   </details>
@@ -178,11 +186,29 @@ function save() {
 }
 
 // ---------- voice ----------
-function pickVoice() {
-  const vs = speechSynthesis.getVoices().filter(v => v.lang && v.lang.startsWith('en'));
-  G.voice = vs.find(v => /Samantha|Google US English|Aria|Jenny/.test(v.name)) || vs.find(v => v.lang === 'en-US') || vs[0] || null;
+// Best-sounding voices first: downloaded Premium/Enhanced/neural voices, then known good ones.
+// Novelty voices (Bells, Zarvox...) are dropped.
+const NOVELTY = /Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Good News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Junior|Ralph|Fred|Kathy|Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley/;
+function voiceScore(v) {
+  let n = 0;
+  if (/Premium|Neural|Natural/i.test(v.name)) n += 40;
+  if (/Enhanced/i.test(v.name)) n += 30;
+  if (/^(Ava|Zoe|Evan|Nathan|Noelle|Samantha|Allison|Susan|Tom)\b|Google US English|Aria|Jenny|Guy/.test(v.name)) n += 15;
+  if (v.lang === 'en-US') n += 5;
+  if (v.localService) n += 2; // works without a signal
+  return n;
 }
-if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function englishVoices() {
+  return speechSynthesis.getVoices()
+    .filter(v => v.lang && v.lang.startsWith('en') && !NOVELTY.test(v.name))
+    .sort((a, b) => voiceScore(b) - voiceScore(a) || a.name.localeCompare(b.name));
+}
+function pickVoice() {
+  const vs = englishVoices();
+  G.voice = vs.find(v => v.name === G.settings.voice) || vs[0] || null;
+  const sel = $('voice');
+  if (sel) sel.innerHTML = vs.map(v => `<option${v === G.voice ? ' selected' : ''}>${v.name}</option>`).join('');
+}
 
 function log(text, cls) {
   const el = document.createElement('div');
@@ -234,9 +260,12 @@ function listen(kind, ms = 7000) {
       resolve(alts);
     };
     G.onInput = text => { alts = [text]; try { r && r.abort(); } catch (e) {} finish(); };
-    const timer = setTimeout(() => { try { r && r.abort(); } catch (e) {} finish(); }, ms);
+    const tapOnly = G.settings.mode === 'tap' || G.micBlocked;
+    // Buttons-only play waits as long as it takes; talking gives up after `ms` and ask() listens again.
+    const timer = tapOnly ? null : setTimeout(() => { try { r && r.abort(); } catch (e) {} finish(); }, ms);
+    $('listening').textContent = tapOnly ? '👆 Tap your answer' : '🎙 Listening…';
     $('listening').classList.add('on');
-    if (!Recognition) return; // no mic support: only the on-screen buttons can answer
+    if (tapOnly || !Recognition) return; // only the on-screen buttons can answer
     r = new Recognition();
     r.lang = 'en-US'; r.interimResults = false; r.maxAlternatives = 5; r.continuous = false;
     r.onresult = e => { const res = e.results[e.results.length - 1]; alts = Array.from(res, a => a.transcript); };
@@ -267,11 +296,11 @@ async function ask(prompt, parse, kind) {
   for (let guard = 0; guard < 300; guard++) {
     if (text) { await say(text); await sleep(150); text = ''; }
     const alts = await listen(kind);
-    if (G.micBlocked) {
-      $('warn').textContent = "Microphone is blocked, so I stopped. Allow the mic for this site (iPhone: Settings → Safari → Microphone), or pick Listen only in Settings.";
-      await say("I can't hear you. The microphone is blocked, so I'm stopping.");
-      G.running = false;
-      throw STOP;
+    if (G.micBlocked && !G.micWarned) {
+      G.micWarned = true;
+      $('warn').textContent = 'Microphone is blocked, so use the buttons. To talk, allow the mic for this site (iPhone: Settings → Safari → Microphone).';
+      await say("I can't hear you, so tap your answers.");
+      continue;
     }
     if (!alts) {
       // Silence: keep listening quietly until the minute is up.
@@ -417,7 +446,7 @@ async function playSeat(seat) {
 
 async function playOneHand(seat, h) {
   if (isBJ(h)) return;
-  const you = seat.you && G.settings.mode === 'mic';
+  const you = seat.you && (G.settings.mode === 'mic' || G.settings.mode === 'tap');
   const drawn = []; // other seats' new cards, said once at the end
   for (;;) {
     const v = handValue(h.cards);
@@ -576,6 +605,9 @@ function render() {
 // ---------- controls ----------
 function syncSettings() {
   const s = G.settings;
+  $('betBtns').innerHTML = [1, 2, 4, 6, 8].map(u => `<button class="btn secondary" data-bet="${u}">$${u * s.unit}</button>`).join('');
+  $('betBtns').style.gridTemplateColumns = 'repeat(5, 1fr)';
+  $('betBtns').style.display = s.bets ? '' : 'none';
   $('bets').checked = s.bets; $('unit').value = String(s.unit);
   $('mode').value = s.mode; $('players').value = s.players; $('rate').value = s.rate; $('delay').value = s.delay;
   $('playersVal').textContent = s.players === 1 ? '1 (heads up)' : s.players;
@@ -590,7 +622,7 @@ function input(text) {
 
 $('startBtn').onclick = () => {
   if (G.running) { stop(); return; }
-  G.micBlocked = false; $('warn').textContent = '';
+  G.micBlocked = G.micWarned = false; $('warn').textContent = '';
   // iOS only allows speech after a tap; warm it up inside this click.
   if ('speechSynthesis' in window) speechSynthesis.speak(new SpeechSynthesisUtterance(''));
   if (!Recognition && G.settings.mode !== 'listen') {
@@ -599,6 +631,7 @@ $('startBtn').onclick = () => {
   run();
 };
 document.querySelectorAll('[data-say]').forEach(b => b.onclick = () => input(b.dataset.say));
+$('betBtns').onclick = e => { const b = e.target.closest('[data-bet]'); if (b) input(b.dataset.bet); };
 let kVal = 0;
 const showK = () => { $('kVal').textContent = kVal > 0 ? '+' + kVal : kVal; };
 $('kMinus').onclick = () => { kVal--; showK(); };
@@ -609,12 +642,20 @@ $('mode').onchange = e => { G.settings.mode = e.target.value; save(); syncSettin
 $('players').oninput = e => { G.settings.players = +e.target.value; G.stats.window = []; save(); syncSettings(); };
 $('bets').onchange = e => { G.settings.bets = e.target.checked; save(); syncSettings(); };
 $('unit').onchange = e => { G.settings.unit = +e.target.value; save(); syncSettings(); };
+$('voice').onchange = e => { G.settings.voice = e.target.value; save(); pickVoice(); };
+$('testVoice').onclick = () => {
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance('Seat 1: King, 6. You: Ace, 7. Dealer shows 9. Your move?');
+  u.rate = G.settings.rate; if (G.voice) u.voice = G.voice;
+  speechSynthesis.speak(u);
+};
 $('rate').oninput = e => { G.settings.rate = +e.target.value; save(); syncSettings(); };
 $('delay').oninput = e => { G.settings.delay = +e.target.value; save(); syncSettings(); };
 $('resetBtn').onclick = () => { if (confirm('Reset your stats, bankroll back to $500, and go back to heads up?')) { G.stats = { window: [], total: 0, correct: 0, hands: 0, bank: 500, betTotal: 0, betCorrect: 0 }; G.settings.players = 1; save(); syncSettings(); } };
 
 load();
 syncSettings();
+if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 </script>
 </body>
 </html>

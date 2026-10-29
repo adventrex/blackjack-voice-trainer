@@ -8,6 +8,7 @@ Play blackjack by voice ($5 units, $500 starting bankroll) and practice the Hi-L
 - Quiet table: only cards are read, unless you make a mistake.
 - After each hand: "Count?" — answer out loud, then hear the real count.
 - 80% over your last 20 count checks adds another player (up to 7).
+- Tap mode: play with the on-screen buttons, no time limit.
 - Voice commands: repeat, score, pause / resume, add a player, remove a player, slower, faster.
 
 Plain HTML + the browser's built-in Web Speech API. No build step, no server.
