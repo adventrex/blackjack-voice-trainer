@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b3d2a">
+<title>Count Drive</title>
+<style>
+  :root {
+    --felt: #0e5a3c; --felt-dark: #083a27; --gold: #e3c46a; --ink: #f4f1e8; --muted: #a9c4b6;
+    --panel: rgba(0,0,0,.28); --good: #6fdc8c; --bad: #ff7b6b; --card: #fbfaf6; --red: #c8102e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--ink);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(ellipse at 50% 30%, var(--felt) 0%, var(--felt-dark) 75%) fixed, var(--felt-dark);
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 16px 16px 40px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: .5px; color: var(--gold); }
+  .sub { color: var(--muted); font-size: 13px; }
+  .table { margin: 14px 0; padding: 16px; border: 2px solid rgba(227,196,106,.45); border-radius: 120px 120px 22px 22px; background: rgba(0,0,0,.12); }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  .dealer { text-align: center; min-height: 112px; }
+  .seats { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 14px; }
+  .seat { padding: 8px; border-radius: 12px; background: var(--panel); min-width: 110px; text-align: center; border: 2px solid transparent; }
+  .seat.you { border-color: rgba(227,196,106,.6); }
+  .hand { padding: 4px; border-radius: 8px; }
+  .hand.active { outline: 2px solid var(--gold); }
+  .cards { display: flex; justify-content: center; gap: 4px; margin: 6px 0 2px; min-height: 64px; }
+  .card { width: 44px; height: 62px; border-radius: 6px; background: var(--card); color: #111; font-weight: 700; font-size: 17px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,.4); line-height: 1.1; }
+  .card.red { color: var(--red); }
+  .card.back { background: repeating-linear-gradient(45deg, #8a1c2b 0 5px, #6d1421 5px 10px); border: 3px solid var(--card); }
+  .total { font-size: 13px; color: var(--muted); }
+  .tag { font-size: 12px; font-weight: 700; }
+  .tag.win { color: var(--good); } .tag.lose { color: var(--bad); } .tag.push { color: var(--gold); }
+  .bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .stat { background: var(--panel); border-radius: 10px; padding: 8px; text-align: center; }
+  .stat b { display: block; font-size: 20px; }
+  .countTile { cursor: pointer; user-select: none; }
+  button, select, input { font: inherit; }
+  .btn { border: 0; border-radius: 12px; padding: 14px 10px; font-weight: 700; font-size: 17px; color: #10261b; background: var(--gold); cursor: pointer; }
+  .btn.secondary { background: rgba(255,255,255,.14); color: var(--ink); }
+  .btn.stop { background: var(--bad); color: #fff; }
+  #startBtn { width: 100%; font-size: 22px; padding: 18px; margin-top: 12px; }
+  .actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+  .keypad { display: grid; grid-template-columns: 1fr 1.4fr 1fr 1.4fr; gap: 8px; margin-top: 8px; align-items: center; }
+  .keypad output { text-align: center; font-size: 24px; font-weight: 800; }
+  .listening { display: none; margin-top: 10px; padding: 10px; border-radius: 10px; text-align: center; background: rgba(111,220,140,.18); color: var(--good); font-weight: 700; }
+  .listening.on { display: block; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  .log { margin-top: 12px; background: var(--panel); border-radius: 10px; padding: 10px; font-size: 14px; min-height: 90px; }
+  .log div { padding: 2px 0; } .log .heard { color: var(--gold); }
+  details { margin-top: 14px; background: var(--panel); border-radius: 10px; padding: 10px 12px; }
+  summary { cursor: pointer; font-weight: 700; }
+  .settings { display: grid; gap: 12px; margin-top: 10px; }
+  .settings label { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+  .settings select, .settings input[type=range] { width: 100%; }
+  select { padding: 8px; border-radius: 8px; border: 0; }
+  .help { font-size: 14px; color: var(--muted); }
+  .help b { color: var(--ink); }
+  .warn { color: var(--bad); font-size: 14px; margin-top: 8px; }
+  @media (max-width: 480px) { .bar { grid-template-columns: repeat(2, 1fr); } .card { width: 38px; height: 54px; font-size: 15px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>♠ Count Drive</h1>
+    <span class="sub">Hands-free Hi-Lo trainer</span>
+  </header>
+
+  <div class="table">
+    <div class="dealer">
+      <div class="label">Dealer</div>
+      <div class="cards" id="dealerCards"></div>
+      <div class="total" id="dealerTotal"></div>
+    </div>
+    <div class="seats" id="seats"></div>
+  </div>
+
+  <div class="bar">
+    <div class="stat"><span class="label">Last 20</span><b id="sWindow">—</b></div>
+    <div class="stat"><span class="label">Players</span><b id="sPlayers">1</b></div>
+    <div class="stat"><span class="label">Decks left</span><b id="sDecks">6.0</b></div>
+    <div class="stat countTile" id="countTile" title="Tap to show/hide"><span class="label">Count</span><b id="sCount">tap</b></div>
+  </div>
+
+  <button class="btn" id="startBtn">▶ Start</button>
+  <div class="listening" id="listening">🎙 Listening…</div>
+  <div class="warn" id="warn"></div>
+
+  <div id="manual">
+    <div class="actions">
+      <button class="btn secondary" data-say="hit">Hit</button>
+      <button class="btn secondary" data-say="stand">Stand</button>
+      <button class="btn secondary" data-say="double">Double</button>
+      <button class="btn secondary" data-say="split">Split</button>
+    </div>
+    <div class="keypad">
+      <button class="btn secondary" id="kMinus">−</button>
+      <output id="kVal">0</output>
+      <button class="btn secondary" id="kPlus">+</button>
+      <button class="btn secondary" id="kSend">Answer</button>
+    </div>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <details>
+    <summary>Settings</summary>
+    <div class="settings">
+      <label>Mode
+        <select id="mode">
+          <option value="mic">Talk: I play my hand + answer the count</option>
+          <option value="countOnly">Talk: count only (my hand plays itself)</option>
+          <option value="listen">Listen only (no mic; count is revealed after a pause)</option>
+        </select>
+      </label>
+      <label>Players at table (including you): <span id="playersVal"></span>
+        <input type="range" id="players" min="1" max="7" step="1">
+      </label>
+      <label>Speech speed: <span id="rateVal"></span>
+        <input type="range" id="rate" min="0.7" max="1.6" step="0.05">
+      </label>
+      <label>Listen-only pause before the answer: <span id="delayVal"></span>s
+        <input type="range" id="delay" min="2" max="12" step="1">
+      </label>
+      <button class="btn secondary" id="resetBtn">Reset my stats</button>
+    </div>
+  </details>
+
+  <details>
+    <summary>How to play / voice commands</summary>
+    <div class="help">
+      <p>Set it up <b>before you drive</b>, tap Start, then put the phone down. Keep Safari open on screen (your car's map can stay on CarPlay).</p>
+      <p>Every card is read aloud. Keep the Hi-Lo running count in your head: <b>2–6 = +1</b>, <b>7–9 = 0</b>, <b>10/face/Ace = −1</b>. The dealer's face-down card counts when it's flipped.</p>
+      <p>On your turn say <b>hit</b>, <b>stand</b>, <b>double</b> or <b>split</b>. After each hand you'll hear <b>"Running count?"</b> — say a number like <b>"plus three"</b>, <b>"minus two"</b> or <b>"zero"</b>.</p>
+      <p>Hit <b>80% over your last 20 count checks</b> and a player is added automatically (up to 7).</p>
+      <p>Anytime you're asked something you can also say: <b>repeat</b>, <b>score</b>, <b>pause</b> (then <b>resume</b>), <b>add a player</b>, <b>remove a player</b>, <b>slower</b>, <b>faster</b>.</p>
+      <p>Rules: 6 decks, dealer stands on soft 17, double after split, one split per hand, reshuffle at 75%. If you go against basic strategy, it tells you.</p>
+    </div>
+  </details>
+</main>
+
+<script src="logic.js"></script>
+<script>
+const STOP = new Error('stopped');
+const $ = id => document.getElementById(id);
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+const G = {
+  settings: { mode: 'mic', players: 1, rate: 1.05, delay: 5 },
+  stats: { window: [], total: 0, correct: 0, hands: 0 },
+  shoe: [], cut: 0, rc: 0, dealer: [], holeHidden: true, seats: [],
+  running: false, showCount: false, voice: null, rec: null,
+  pendingInput: null, onInput: null, lastPrompt: '',
+  silent: false, autoInput: null, // test hooks
+};
+
+// ---------- persistence ----------
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem('countdrive') || 'null');
+    if (s) { Object.assign(G.settings, s.settings); Object.assign(G.stats, s.stats); }
+  } catch (e) {}
+}
+function save() {
+  try { localStorage.setItem('countdrive', JSON.stringify({ settings: G.settings, stats: G.stats })); } catch (e) {}
+}
+
+// ---------- voice ----------
+function pickVoice() {
+  const vs = speechSynthesis.getVoices().filter(v => v.lang && v.lang.startsWith('en'));
+  G.voice = vs.find(v => /Samantha|Google US English|Aria|Jenny/.test(v.name)) || vs.find(v => v.lang === 'en-US') || vs[0] || null;
+}
+if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+
+function log(text, cls) {
+  const el = document.createElement('div');
+  if (cls) el.className = cls;
+  el.textContent = text;
+  const box = $('log');
+  box.prepend(el);
+  while (box.children.length > 8) box.lastChild.remove();
+}
+
+function checkStop() { if (!G.running) throw STOP; }
+
+async function say(text) {
+  checkStop();
+  log(text);
+  if (!G.silent && 'speechSynthesis' in window) {
+    await new Promise(resolve => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; clearTimeout(timer); resolve(); } };
+      // Safety net: some browsers occasionally never fire onend.
+      const timer = setTimeout(finish, text.length * 90 / G.settings.rate + 3000);
+      const parts = text.match(/[^.?!]+[.?!]*/g) || [text];
+      parts.forEach((p, i) => {
+        const u = new SpeechSynthesisUtterance(p.trim());
+        u.rate = G.settings.rate; u.lang = 'en-US';
+        if (G.voice) u.voice = G.voice;
+        if (i === parts.length - 1) { u.onend = finish; u.onerror = finish; }
+        speechSynthesis.speak(u);
+      });
+    });
+  }
+  checkStop();
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, G.silent ? 0 : ms));
+
+// Resolves with a list of transcript alternatives, or null on silence.
+function listen(kind, ms = 7000) {
+  checkStop();
+  if (G.pendingInput) { const t = G.pendingInput; G.pendingInput = null; log('▸ ' + t, 'heard'); return Promise.resolve([t]); }
+  if (G.silent) return Promise.resolve(G.autoInput ? [G.autoInput(kind)] : null);
+  return new Promise(resolve => {
+    let alts = null, finished = false, r = null;
+    const finish = () => {
+      if (finished) return;
+      finished = true; clearTimeout(timer);
+      G.rec = null; G.onInput = null; $('listening').classList.remove('on');
+      if (alts) log('▸ ' + alts[0], 'heard');
+      resolve(alts);
+    };
+    G.onInput = text => { alts = [text]; try { r && r.abort(); } catch (e) {} finish(); };
+    const timer = setTimeout(() => { try { r && r.abort(); } catch (e) {} finish(); }, ms);
+    $('listening').classList.add('on');
+    if (!Recognition) return; // no mic support: only the on-screen buttons can answer
+    r = new Recognition();
+    r.lang = 'en-US'; r.interimResults = false; r.maxAlternatives = 5; r.continuous = false;
+    r.onresult = e => { const res = e.results[e.results.length - 1]; alts = Array.from(res, a => a.transcript); };
+    r.onerror = e => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') G.micBlocked = true;
+      finish();
+    };
+    r.onend = finish;
+    G.rec = r;
+    try { r.start(); } catch (e) { finish(); }
+  }).then(a => { checkStop(); return a; });
+}
+
+async function pauseLoop() {
+  await say("Paused. Say resume when you're ready.");
+  for (;;) {
+    const alts = await listen('resume', 15000);
+    if (alts && alts.some(isResume)) { await say('Resuming.'); return; }
+  }
+}
+
+// Speak a prompt, listen, and return the first parsed answer (or null after a few misses).
+// Voice commands (repeat, pause, score...) are handled here so they work at any prompt.
+async function ask(prompt, parse, kind) {
+  let text = prompt, misses = 0;
+  for (let guard = 0; guard < 12 && misses < 3; guard++) {
+    await say(text);
+    await sleep(150);
+    const alts = await listen(kind);
+    if (G.micBlocked) {
+      G.settings.mode = 'listen'; syncSettings();
+      $('warn').textContent = 'Microphone is blocked. Switched to listen-only mode. Allow mic for this site in Safari settings to talk.';
+      await say("I can't use the microphone, so I switched to listen only mode.");
+      return null;
+    }
+    if (!alts) { misses++; text = misses === 1 ? `Say again. ${prompt}` : prompt; continue; }
+    const cmd = alts.map(parseCommand).find(Boolean);
+    if (cmd) { text = await runCommand(cmd, prompt); continue; }
+    for (const a of alts) { const v = parse(a); if (v !== null) return v; }
+    misses++;
+    text = `I heard ${alts[0]}. ${prompt}`;
+  }
+  return null;
+}
+
+async function runCommand(cmd, prompt) {
+  const s = G.settings;
+  if (cmd === 'repeat') return tableSummary() + ' ' + prompt;
+  if (cmd === 'pause') { await pauseLoop(); return prompt; }
+  if (cmd === 'score') return scoreSpeech() + ' ' + prompt;
+  if (cmd === 'addPlayer' || cmd === 'removePlayer') {
+    const before = s.players;
+    s.players = Math.max(1, Math.min(7, s.players + (cmd === 'addPlayer' ? 1 : -1)));
+    if (s.players !== before) G.stats.window = [];
+    syncSettings(); save();
+    return `Okay, ${s.players === 1 ? 'heads up' : s.players + ' players'} starting next hand. ${prompt}`;
+  }
+  if (cmd === 'slower' || cmd === 'faster') {
+    s.rate = Math.max(0.7, Math.min(1.6, +(s.rate + (cmd === 'faster' ? 0.15 : -0.15)).toFixed(2)));
+    syncSettings(); save();
+    return `${cmd === 'faster' ? 'Faster' : 'Slower'}. ${prompt}`;
+  }
+  return prompt;
+}
+
+// ---------- game ----------
+const youSeat = () => G.seats[G.seats.length - 1];
+const valueWords = cards => { const v = handValue(cards); return (v.soft && v.total < 21 ? 'soft ' : '') + v.total; };
+const cardsWords = cards => cards.map(c => rankWord(c.r)).join(', ');
+const isBJ = h => h.cards.length === 2 && !h.fromSplit && handValue(h.cards).total === 21;
+const upCard = () => G.dealer[0];
+
+function draw() { const c = G.shoe.pop(); G.rc += hiLo(c.r); return c; }
+
+function tableSummary() {
+  const you = youSeat();
+  if (!you) return '';
+  const h = you.hands[G.activeHand || 0] || you.hands[0];
+  return `Dealer shows ${rankWord(upCard().r)}. You have ${cardsWords(h.cards)}, ${valueWords(h.cards)}.`;
+}
+
+function scoreSpeech() {
+  const w = G.stats.window;
+  const pct = w.length ? Math.round(100 * w.filter(Boolean).length / w.length) : null;
+  const overall = G.stats.total ? Math.round(100 * G.stats.correct / G.stats.total) : null;
+  if (pct === null && overall === null) return 'No count checks yet.';
+  return `${pct === null ? '' : `${pct} percent on your last ${w.length} at this level.`} ${overall === null ? '' : `${overall} percent overall.`} ${G.settings.players} at the table.`;
+}
+
+async function playHand() {
+  if (G.shoe.length < G.cut || !G.shoe.length) {
+    G.shoe = makeShoe(6); G.cut = Math.floor(G.shoe.length * 0.25); G.rc = 0;
+    await say('New shoe. The count starts at zero.');
+  }
+  const n = G.settings.players;
+  G.seats = [];
+  for (let i = 1; i < n; i++) G.seats.push({ name: `Seat ${i}`, you: false, hands: [{ cards: [] }] });
+  G.seats.push({ name: 'You', you: true, hands: [{ cards: [] }] });
+  G.dealer = []; G.holeHidden = true; G.activeSeat = -1; G.activeHand = 0;
+
+  // Deal: one card each, dealer up, one card each, dealer hole (not counted until flipped).
+  for (const s of G.seats) s.hands[0].cards.push(draw());
+  G.dealer.push(draw());
+  for (const s of G.seats) s.hands[0].cards.push(draw());
+  G.hole = G.shoe.pop();
+  render();
+
+  const parts = G.seats.map(s => {
+    const h = s.hands[0];
+    if (s.you) return `You: ${cardsWords(h.cards)}. ${isBJ(h) ? 'Blackjack!' : valueWords(h.cards) + '.'}`;
+    return `${s.name}: ${cardsWords(h.cards)}.`;
+  });
+  await say(`${parts.join(' ')} Dealer shows ${rankWord(upCard().r)}.`);
+
+  const dealerBJ = cardVal(upCard().r) >= 10 || upCard().r === 'A'
+    ? handValue([upCard(), G.hole]).total === 21 : false;
+  if (dealerBJ) {
+    flipHole();
+    await say(`Dealer flips ${rankWord(G.dealer[1].r)}. Dealer has blackjack.`);
+  } else {
+    for (let i = 0; i < G.seats.length; i++) { G.activeSeat = i; await playSeat(G.seats[i]); }
+    G.activeSeat = -1;
+    await playDealer();
+  }
+  await settle(dealerBJ);
+  await countCheck();
+  G.stats.hands++; save(); render();
+  await sleep(600);
+}
+
+function flipHole() { G.dealer.push(G.hole); G.rc += hiLo(G.hole.r); G.holeHidden = false; render(); }
+
+async function playSeat(seat) {
+  for (let i = 0; i < seat.hands.length; i++) { G.activeHand = i; render(); await playOneHand(seat, seat.hands[i]); }
+}
+
+async function playOneHand(seat, h) {
+  if (isBJ(h)) { if (!seat.you) await say(`${seat.name} has blackjack.`); return; }
+  const you = seat.you && G.settings.mode === 'mic';
+  const spoken = []; // bot narration, said once at the end
+  let first = true;
+  for (;;) {
+    const v = handValue(h.cards);
+    if (v.total >= 21 || h.splitAces || h.doubled) break;
+    const canDouble = h.cards.length === 2;
+    const canSplit = h.cards.length === 2 && cardVal(h.cards[0].r) === cardVal(h.cards[1].r) && seat.hands.length < 2;
+    const rec = basicStrategy(h.cards, upCard(), canDouble, canSplit);
+    let act = rec;
+    if (you) {
+      const opts = ['Hit', 'stand'].concat(canDouble ? ['double'] : [], canSplit ? ['split'] : []);
+      const prompt = `${first && seat.hands.length > 1 ? `Hand ${seat.hands.indexOf(h) + 1}. ` : ''}${first ? `You have ${valueWords(h.cards)} against ${rankWord(upCard().r)}. ` : ''}${opts.slice(0, -1).join(', ')} or ${opts[opts.length - 1]}?`;
+      let ans = await ask(prompt, a => { const x = parseAction(a); return x && opts.map(o => o.toLowerCase()).includes(ACTION_WORD[x]) ? x : null; }, 'action:' + rec);
+      if (ans === null) { ans = rec; await say(`No answer, so I'll ${ACTION_WORD[rec]}.`); }
+      else if (ans !== rec) await say(`Basic strategy says ${ACTION_WORD[rec]}.`);
+      act = ans;
+    } else if (seat.you) {
+      await say(`You ${ACTION_WORD[act]} on ${valueWords(h.cards)}.`);
+    }
+    first = false;
+    if (act === 'S') { if (!seat.you) spoken.push(`stands on ${v.total}`); break; }
+    if (act === 'P') {
+      const nh = { cards: [h.cards.pop()], fromSplit: true };
+      h.fromSplit = true;
+      seat.hands.splice(seat.hands.indexOf(h) + 1, 0, nh);
+      h.cards.push(draw()); nh.cards.push(draw());
+      if (h.cards[0].r === 'A') h.splitAces = nh.splitAces = true;
+      render();
+      const msg = `splits. First hand gets ${rankWord(h.cards[1].r)}, ${valueWords(h.cards)}. Second hand gets ${rankWord(nh.cards[1].r)}, ${valueWords(nh.cards)}.`;
+      if (seat.you) await say('You ' + msg); else await say(`${seat.name} ${msg}`);
+      continue;
+    }
+    const c = draw();
+    h.cards.push(c);
+    if (act === 'D') h.doubled = true;
+    render();
+    const nv = handValue(h.cards);
+    const result = nv.total > 21 ? 'bust' : valueWords(h.cards);
+    if (seat.you) await say(`${act === 'D' ? 'Doubling. ' : ''}${rankWord(c.r)}. ${nv.total > 21 ? 'Bust.' : result + '.'}`);
+    else spoken.push(`${act === 'D' ? 'doubles, ' : 'hits, '}${rankWord(c.r)}${nv.total > 21 ? ', bust' : ''}`);
+  }
+  if (!seat.you && spoken.length) {
+    const last = handValue(h.cards).total;
+    const tail = last <= 21 && !/stands/.test(spoken[spoken.length - 1]) ? `, ${last}` : '';
+    await say(`${seat.name} ${spoken.join(', ')}${tail}.`);
+  }
+}
+
+async function playDealer() {
+  flipHole();
+  const live = G.seats.some(s => s.hands.some(h => handValue(h.cards).total <= 21 && !isBJ(h)));
+  const words = [`Dealer flips ${rankWord(G.dealer[1].r)}, ${valueWords(G.dealer)}.`];
+  if (live) {
+    while (handValue(G.dealer).total < 17) {
+      const c = draw(); G.dealer.push(c); render();
+      const v = handValue(G.dealer).total;
+      words.push(`Hits, ${rankWord(c.r)}, ${v > 21 ? 'dealer busts' : valueWords(G.dealer)}.`);
+    }
+  }
+  await say(words.join(' '));
+}
+
+async function settle(dealerBJ) {
+  const d = handValue(G.dealer).total;
+  const out = [];
+  for (const s of G.seats) for (const h of s.hands) {
+    const v = handValue(h.cards).total;
+    if (isBJ(h)) h.result = dealerBJ ? 'push' : 'win';
+    else if (dealerBJ || v > 21) h.result = 'lose';
+    else if (d > 21 || v > d) h.result = 'win';
+    else h.result = v === d ? 'push' : 'lose';
+    if (s.you) out.push(h.result === 'win' ? (isBJ(h) ? 'Blackjack pays.' : 'You win.') : h.result === 'push' ? 'Push.' : 'You lose.');
+  }
+  render();
+  const you = youSeat();
+  await say(you.hands.length > 1 ? out.map((o, i) => `Hand ${i + 1}: ${o}`).join(' ') : out[0]);
+}
+
+async function countCheck() {
+  const rc = G.rc, s = G.stats;
+  if (G.settings.mode === 'listen') {
+    await say('Running count?');
+    await sleep(G.settings.delay * 1000);
+    await say(`It's ${countWords(rc)}.`);
+    return;
+  }
+  const ans = await ask('Running count?', parseCount, 'count');
+  if (G.settings.mode === 'listen') { await say(`It's ${countWords(rc)}.`); return; } // mic just got blocked
+  if (ans === null) { await say(`Skipping that one. It's ${countWords(rc)}.`); return; }
+  const ok = ans === rc;
+  s.window.push(ok); if (s.window.length > 20) s.window.shift();
+  s.total++; if (ok) s.correct++;
+  save(); render();
+  await say(ok ? `Correct, ${countWords(rc)}.` : `No, it's ${countWords(rc)}. You said ${countWords(ans)}.`);
+
+  const hits = s.window.filter(Boolean).length;
+  if (s.window.length >= 20 && hits >= 16 && G.settings.players < 7) {
+    G.settings.players++; s.window = []; syncSettings(); save();
+    await say(`${Math.round(hits * 5)} percent on your last 20. Adding a player. ${G.settings.players} at the table now.`);
+  } else if (s.total % 10 === 0) {
+    await say(`${Math.round(100 * hits / s.window.length)} percent on your last ${s.window.length}.`);
+  }
+}
+
+async function run() {
+  G.running = true;
+  $('startBtn').textContent = '■ Stop'; $('startBtn').classList.add('stop');
+  keepAwake();
+  try {
+    await say(G.settings.players === 1 ? 'Heads up. Count every card. Here we go.' : `${G.settings.players} players. Here we go.`);
+    while (G.running) await playHand();
+  } catch (e) {
+    if (e !== STOP) { console.error(e); $('warn').textContent = 'Error: ' + e.message; }
+  }
+  stop();
+}
+
+function stop() {
+  G.running = false;
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  try { G.rec && G.rec.abort(); } catch (e) {}
+  $('listening').classList.remove('on');
+  $('startBtn').textContent = '▶ Start'; $('startBtn').classList.remove('stop');
+  if (G.wake) { G.wake.release().catch(() => {}); G.wake = null; }
+}
+
+async function keepAwake() {
+  try { if (navigator.wakeLock) G.wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && G.running) keepAwake(); });
+
+// ---------- rendering ----------
+function cardHTML(c) {
+  const red = c.s === '♥' || c.s === '♦';
+  return `<div class="card${red ? ' red' : ''}">${c.r}<span>${c.s}</span></div>`;
+}
+
+function render() {
+  $('dealerCards').innerHTML = G.dealer.map(cardHTML).join('') + (G.dealer.length && G.holeHidden ? '<div class="card back"></div>' : '');
+  $('dealerTotal').textContent = G.dealer.length && !G.holeHidden ? valueWords(G.dealer) : '';
+  $('seats').innerHTML = G.seats.map((s, si) => `
+    <div class="seat${s.you ? ' you' : ''}">
+      <div class="label">${s.name}</div>
+      ${s.hands.map((h, hi) => `
+        <div class="hand${si === G.activeSeat && hi === G.activeHand ? ' active' : ''}">
+          <div class="cards">${h.cards.map(cardHTML).join('')}</div>
+          <div class="total">${h.cards.length ? (handValue(h.cards).total > 21 ? 'bust' : valueWords(h.cards)) : ''}${h.doubled ? ' ×2' : ''}</div>
+          ${h.result ? `<div class="tag ${h.result}">${h.result}</div>` : ''}
+        </div>`).join('')}
+    </div>`).join('');
+  const w = G.stats.window;
+  $('sWindow').textContent = w.length ? `${Math.round(100 * w.filter(Boolean).length / w.length)}% (${w.length})` : '—';
+  $('sPlayers').textContent = G.settings.players;
+  $('sDecks').textContent = (G.shoe.length / 52 || 6).toFixed(1);
+  $('sCount').textContent = G.showCount ? countWords(G.rc).replace('plus ', '+').replace('minus ', '−') : 'tap';
+  $('manual').style.display = G.settings.mode === 'listen' ? 'none' : '';
+}
+
+// ---------- controls ----------
+function syncSettings() {
+  const s = G.settings;
+  $('mode').value = s.mode; $('players').value = s.players; $('rate').value = s.rate; $('delay').value = s.delay;
+  $('playersVal').textContent = s.players === 1 ? '1 (heads up)' : s.players;
+  $('rateVal').textContent = s.rate.toFixed(2) + '×';
+  $('delayVal').textContent = s.delay;
+  render();
+}
+
+function input(text) {
+  if (G.onInput) G.onInput(text); else G.pendingInput = text;
+}
+
+$('startBtn').onclick = () => {
+  if (G.running) { stop(); return; }
+  G.micBlocked = false; $('warn').textContent = '';
+  // iOS only allows speech after a tap; warm it up inside this click.
+  if ('speechSynthesis' in window) speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+  if (!Recognition && G.settings.mode !== 'listen') {
+    $('warn').textContent = "This browser can't do speech recognition. Use the buttons, or switch to listen-only mode. (iPhone: Safari with Siri & Dictation on.)";
+  }
+  run();
+};
+document.querySelectorAll('[data-say]').forEach(b => b.onclick = () => input(b.dataset.say));
+let kVal = 0;
+const showK = () => { $('kVal').textContent = kVal > 0 ? '+' + kVal : kVal; };
+$('kMinus').onclick = () => { kVal--; showK(); };
+$('kPlus').onclick = () => { kVal++; showK(); };
+$('kSend').onclick = () => { input(String(kVal)); };
+$('countTile').onclick = () => { G.showCount = !G.showCount; render(); };
+$('mode').onchange = e => { G.settings.mode = e.target.value; save(); syncSettings(); };
+$('players').oninput = e => { G.settings.players = +e.target.value; G.stats.window = []; save(); syncSettings(); };
+$('rate').oninput = e => { G.settings.rate = +e.target.value; save(); syncSettings(); };
+$('delay').oninput = e => { G.settings.delay = +e.target.value; save(); syncSettings(); };
+$('resetBtn').onclick = () => { if (confirm('Reset your count stats and go back to heads up?')) { G.stats = { window: [], total: 0, correct: 0, hands: 0 }; G.settings.players = 1; save(); syncSettings(); } };
+
+load();
+syncSettings();
+</script>
+</body>
+</html>
