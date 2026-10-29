@@ -168,10 +168,11 @@ function parseCount(text) {
 
 function parseAction(text) {
   const t = ' ' + String(text).toLowerCase().replace(/[,.!?]/g, ' ') + ' ';
-  if (/\b(double|doubles|doubled|doubling|dub)\b/.test(t)) return 'D';
-  if (/\b(split|splits|splitting|spit)\b/.test(t)) return 'P';
-  if (/\b(stand|stands|standing|stay|stays|stan|stan's)\b/.test(t)) return 'S';
-  if (/\b(hit|hits|hitting|hip|hid|hint|card)\b/.test(t) || t.trim() === 'it') return 'H';
+  // Phones often mishear one-word answers, so accept the common sound-alikes.
+  if (/\b(double|doubles|doubled|doubling|dub|dabble|bubble)\b/.test(t)) return 'D';
+  if (/\b(split|splits|splitting|spit|slit|spilt)\b/.test(t)) return 'P';
+  if (/\b(stand|stands|standing|stay|stays|stan|stan's|stamp|stan't|done|good|pass)\b/.test(t)) return 'S';
+  if (/\b(hit|hits|hitting|hip|hid|hint|heat|hat|hut|head|kit|card|another|one more)\b/.test(t) || t.trim() === 'it') return 'H';
   return null;
 }
 

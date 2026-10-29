@@ -62,3 +62,6 @@ assert.deepStrictEqual(L.extractBet('hit and bet forty', 5), { bet: 8, rest: 'hi
 assert.deepStrictEqual(L.extractBet('raise', 5), { bet: null, rest: '' });
 assert.strictEqual(L.extractBet('minus two', 5), null);
 console.log('raise parsing ok');
+for (const [t, want] of Object.entries({ 'Hit.': 'H', 'Heat': 'H', 'hat': 'H', 'Hip': 'H', 'another card': 'H', "I'm good": 'S', 'Stamp': 'S', 'dabble': 'D', 'Spit': 'P' }))
+  assert.strictEqual(L.parseAction(t), want, t);
+console.log('sound-alikes ok');
