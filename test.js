@@ -54,3 +54,11 @@ assert.deepStrictEqual([-3, 0, 1.9, 2, 2.9, 3.5, 4.1, 5, 9].map(L.correctBet), [
 const bets = { 'two': 2, 'two units': 2, '4': 4, 'thirty dollars': 3, '$40': 4, 'minimum': 1, 'one': 1, 'max': 8, 'banana': null };
 for (const [t, want] of Object.entries(bets)) assert.strictEqual(L.parseBet(t, 10), want, t);
 console.log('betting ok');
+assert.strictEqual(L.parseBet('twenty', 5), 4);
+assert.strictEqual(L.parseBet('two', 5), 2);
+assert.deepStrictEqual(L.extractBet('plus six, raise twenty', 5), { bet: 4, rest: 'plus six' });
+assert.deepStrictEqual(L.extractBet('raise ten dollars', 5), { bet: 2, rest: '' });
+assert.deepStrictEqual(L.extractBet('hit and bet forty', 5), { bet: 8, rest: 'hit' });
+assert.deepStrictEqual(L.extractBet('raise', 5), { bet: null, rest: '' });
+assert.strictEqual(L.extractBet('minus two', 5), null);
+console.log('raise parsing ok');

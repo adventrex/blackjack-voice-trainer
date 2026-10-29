@@ -44,6 +44,7 @@
   .btn { border: 0; border-radius: 12px; padding: 14px 10px; font-weight: 700; font-size: 17px; color: #10261b; background: var(--gold); cursor: pointer; }
   .btn.secondary { background: rgba(255,255,255,.14); color: var(--ink); }
   .btn.stop { background: var(--bad); color: #fff; }
+  .btn.picked { background: var(--gold); color: #10261b; }
   #startBtn { width: 100%; font-size: 22px; padding: 18px; margin-top: 12px; }
   .actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
   .keypad { display: grid; grid-template-columns: 1fr 1.4fr 1fr 1.4fr; gap: 8px; margin-top: 8px; align-items: center; }
@@ -149,7 +150,7 @@
       <p>Set it up <b>before you drive</b>, tap Start, then put the phone down. Keep Safari open on screen (your car's map can stay on CarPlay).</p>
       <p>Every card is read aloud. Keep the Hi-Lo running count in your head: <b>2–6 = +1</b>, <b>7–9 = 0</b>, <b>10/face/Ace = −1</b>. The dealer's face-down card counts when it's flipped.</p>
       <p>On your turn say <b>hit</b>, <b>stand</b>, <b>double</b> or <b>split</b>. The table stays quiet except for cards. After each hand you'll hear <b>"Count?"</b> — say a number like <b>"plus three"</b>, <b>"minus two"</b> or <b>"zero"</b>.</p>
-      <p><b>Betting:</b> before each hand you'll hear <b>"Bet?"</b> Say dollars (<b>"ten dollars"</b>) or units of your betting unit (<b>"two"</b>). Default unit is $5; bankroll starts at $500. Work out the <b>true count</b> = running count ÷ decks left, then bet: true count <b>+1 or less → $5</b>, <b>+2 → $10</b>, <b>+3 → $20</b>, <b>+4 → $30</b>, <b>+5 or more → $40</b> (1/2/4/6/8 units). Each +1 of true count is worth about +0.5% to you; the house is ahead until about +1. Bet wrong and it tells you the right bet and why.</p>
+      <p><b>Betting:</b> you always bet the $5 minimum unless you raise. To raise, say it with any answer, like <b>"plus six, raise twenty"</b>, or tap a bet button; it applies to the next hand only. Bankroll starts at $500. Work out the <b>true count</b> = running count ÷ decks left, then bet: true count <b>+1 or less → $5</b>, <b>+2 → $10</b>, <b>+3 → $20</b>, <b>+4 → $30</b>, <b>+5 or more → $40</b> (1/2/4/6/8 units). Each +1 of true count is worth about +0.5% to you; the house is ahead until about +1. Bet wrong and it tells you the right bet and why.</p>
       <p>Hit <b>80% over your last 20 count checks</b> and a player is added automatically (up to 7).</p>
       <p>Anytime you're asked something you can also say: <b>repeat</b>, <b>score</b>, <b>pause</b> (then <b>resume</b>), <b>add a player</b>, <b>remove a player</b>, <b>slower</b>, <b>faster</b>.</p>
       <p><b>Want a better voice on iPhone?</b> Settings → Accessibility → Spoken Content → Voices → English, download a <b>Premium</b> or <b>Enhanced</b> voice (Ava and Zoe sound best), then pick it here under Settings → Voice. Downloaded voices also work with no signal.</p>
@@ -295,7 +296,14 @@ async function ask(prompt, parse, kind) {
   let text = prompt, misheard = 0, deadline = Date.now() + ANSWER_WAIT_MS, reminded = false;
   for (let guard = 0; guard < 300; guard++) {
     if (text) { await say(text); await sleep(150); text = ''; }
-    const alts = await listen(kind);
+    let alts = await listen(kind);
+    const raise = alts && alts.map(a => extractBet(a, G.settings.unit)).find(Boolean);
+    if (raise) {
+      if (!raise.bet) { text = `Say raise and an amount, like raise twenty. ${prompt}`; continue; }
+      G.nextBet = raise.bet; render();
+      if (!raise.rest) { text = `${betWords(raise.bet)} next hand. ${prompt}`; continue; }
+      alts = [raise.rest];
+    }
     if (G.micBlocked && !G.micWarned) {
       G.micWarned = true;
       $('warn').textContent = 'Microphone is blocked, so use the buttons. To talk, allow the mic for this site (iPhone: Settings → Safari → Microphone).';
@@ -378,28 +386,29 @@ async function betCheck() {
   const edgeSay = edge >= 0.05 ? `You have about a ${oneDecimal(edge)} percent edge.`
     : edge <= -0.05 ? `The house has about a ${oneDecimal(-edge)} percent edge.` : "It's about even.";
   if (G.settings.mode === 'listen') {
-    await say('Bet?');
-    await sleep(G.settings.delay * 1000);
-    await say(`Bet ${betWords(right)}. ${why} ${right > 1 ? edgeSay : ''}`);
+    if (right > 1) await say(`The count's up. Bet ${betWords(right)}. ${why} ${edgeSay}`);
     return right;
   }
-  const ans = await ask('Bet?', a => parseBet(a, G.settings.unit), 'bet:' + right);
-  if (ans === null) { await say(`Skipping. Bet ${betWords(right)}. ${why}`); return right; }
+  // No question: the minimum goes out unless you raised (by voice or a bet button) since the last deal.
+  const bet = G.nextBet || 1;
+  G.nextBet = null; render();
   const st = G.stats;
   st.betTotal++;
-  if (ans === right) {
+  if (bet === right) {
     st.betCorrect++;
   } else {
-    const lead = ans < right ? 'Raise your bet.' : right === 1 ? 'Too much. Bet the minimum.' : 'Too much.';
-    await say(`${lead} ${why} ${edgeSay} Bet ${betWords(right)}. Playing your ${betWords(ans)}.`);
+    const lead = bet < right ? 'You should have raised.' : right === 1 ? 'Too much. Bet the minimum.' : 'Too much.';
+    const how = bet < right && !G.raiseHinted ? ' To raise, say raise and an amount with your count answer, like plus six, raise twenty.' : '';
+    if (how) G.raiseHinted = true;
+    await say(`${lead} ${why} ${edgeSay} Bet ${betWords(right)}. Playing ${betWords(bet)}.${how}`);
   }
   save();
-  return ans;
+  return bet;
 }
 
 async function playHand() {
   if (G.shoe.length < G.cut || !G.shoe.length) {
-    G.shoe = makeShoe(6); G.cut = Math.floor(G.shoe.length * 0.25); G.rc = 0; G.rcAtCheck = 0; G.handCards = [];
+    G.shoe = makeShoe(6); G.cut = Math.floor(G.shoe.length * 0.25); G.rc = 0; G.rcAtCheck = 0; G.handCards = []; G.nextBet = null;
     await say('New shoe.');
   }
   const bet = await betCheck();
@@ -599,6 +608,7 @@ function render() {
   $('sDecks').textContent = (G.shoe.length / 52 || 6).toFixed(1);
   $('sBank').textContent = '$' + G.stats.bank;
   $('sCount').textContent = G.showCount ? countWords(G.rc).replace('plus ', '+').replace('minus ', '−') : 'tap';
+  document.querySelectorAll('[data-bet]').forEach(b => b.classList.toggle('picked', +b.dataset.bet === (G.nextBet || 1)));
   $('manual').style.display = G.settings.mode === 'listen' ? 'none' : '';
 }
 
@@ -631,7 +641,10 @@ $('startBtn').onclick = () => {
   run();
 };
 document.querySelectorAll('[data-say]').forEach(b => b.onclick = () => input(b.dataset.say));
-$('betBtns').onclick = e => { const b = e.target.closest('[data-bet]'); if (b) input(b.dataset.bet); };
+$('betBtns').onclick = e => {
+  const b = e.target.closest('[data-bet]');
+  if (b) { G.nextBet = G.nextBet === +b.dataset.bet ? null : +b.dataset.bet; render(); }
+};
 let kVal = 0;
 const showK = () => { $('kVal').textContent = kVal > 0 ? '+' + kVal : kVal; };
 $('kMinus').onclick = () => { kVal--; showK(); };

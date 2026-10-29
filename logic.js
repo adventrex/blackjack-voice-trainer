@@ -77,8 +77,17 @@ function parseBet(text, unitDollars) {
   if (/\b(max|maximum)\b/.test(t)) return 8;
   const n = parseCount(t.replace(/\$/g, ' '));
   if (n === null || n === 0) return null;
-  const dollars = /\$|dollar|bucks/.test(t);
+  // "twenty" with $5 units means dollars: no bet in the ramp is over 8 units.
+  const dollars = /\$|dollar|bucks/.test(t) || Math.abs(n) > 8;
   return Math.max(1, Math.round(Math.abs(n) / (dollars ? unitDollars : 1)));
+}
+
+// Pull "raise twenty" / "bet ten dollars" out of any answer.
+// Returns null if there's no bet in it, else { bet (units, or null if no amount heard), rest }.
+function extractBet(text, unitDollars) {
+  const m = String(text).match(/\b(raise|raising|bet|betting)\b(.*)$/i);
+  if (!m) return null;
+  return { bet: parseBet(m[2], unitDollars), rest: text.slice(0, m.index).replace(/[\s,]*(and)?[\s,]*$/i, '').trim() };
 }
 
 // One or two spoken sentences on why basic strategy picks `rec` over `chosen`.
@@ -129,7 +138,7 @@ const NUM = {
   zero: 0, oh: 0, even: 0, neutral: 0, nothing: 0, none: 0,
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
   eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
-  seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30,
+  seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50,
 };
 // Words recognition often hears instead of a number. Only used if nothing better is found.
 const SOUNDS_LIKE = { won: 1, to: 2, too: 2, tree: 3, free: 3, for: 4, fore: 4, ate: 8 };
@@ -150,7 +159,7 @@ function parseCount(text) {
       if (PLUS.has(tok)) { sign = 1; continue; }
       let n = /^\d+$/.test(tok) ? +tok : dict[tok];
       if (n === undefined) continue;
-      if ((n === 20 || n === 30) && NUM[tokens[i + 1]] > 0 && NUM[tokens[i + 1]] < 10) n += NUM[tokens[i + 1]];
+      if (n >= 20 && n % 10 === 0 && NUM[tokens[i + 1]] > 0 && NUM[tokens[i + 1]] < 10) n += NUM[tokens[i + 1]];
       return n === 0 ? 0 : sign * n;
     }
   }
@@ -183,6 +192,6 @@ const isResume = text => /\b(resume|go|continue|start|ready|play|unpause|deal|ok
 const countWords = n => (n > 0 ? `plus ${n}` : n < 0 ? `minus ${-n}` : 'zero');
 
 if (typeof module !== 'undefined') {
-  module.exports = { hiLo, cardVal, rankWord, handValue, makeShoe, basicStrategy, ACTION_WORD, explainPlay, trueCount, edgePct, correctBet, parseBet,
+  module.exports = { hiLo, cardVal, rankWord, handValue, makeShoe, basicStrategy, ACTION_WORD, explainPlay, trueCount, edgePct, correctBet, parseBet, extractBet,
     parseCount, parseAction, parseCommand, isResume, countWords };
 }

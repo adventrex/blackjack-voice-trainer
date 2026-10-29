@@ -1,11 +1,12 @@
 # Count Drive — hands-free blackjack counting trainer
 
-Play blackjack by voice ($5 units, $500 starting bankroll) and practice the Hi-Lo running count without looking at the screen.
+Play blackjack by voice ($5 minimum bet, $500 starting bankroll) and practice the Hi-Lo running count without looking at the screen.
 
 **Play:** https://adventrex.github.io/blackjack-voice-trainer/ (iPhone: Safari, with Siri & Dictation turned on)
 
 - Every card is read aloud; you say hit / stand / double / split.
 - Quiet table: only cards are read, unless you make a mistake.
+- Bets the $5 minimum unless you raise ("plus six, raise twenty" or a bet button). Miss a raise and it tells you.
 - After each hand: "Count?" — answer out loud, then hear the real count.
 - 80% over your last 20 count checks adds another player (up to 7).
 - Tap mode: play with the on-screen buttons, no time limit.
