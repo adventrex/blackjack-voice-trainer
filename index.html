@@ -258,13 +258,14 @@ async function pauseLoop() {
   }
 }
 
-// Speak a prompt, listen, and return the first parsed answer (or null after a few misses).
+// Speak a prompt, listen, and return the first parsed answer. Waits up to a minute of silence
+// (repeating the prompt once at 30 seconds) or three misheard answers before giving up with null.
 // Voice commands (repeat, pause, score...) are handled here so they work at any prompt.
+const ANSWER_WAIT_MS = 60000;
 async function ask(prompt, parse, kind) {
-  let text = prompt, misses = 0;
-  for (let guard = 0; guard < 12 && misses < 3; guard++) {
-    await say(text);
-    await sleep(150);
+  let text = prompt, misheard = 0, deadline = Date.now() + ANSWER_WAIT_MS, reminded = false;
+  for (let guard = 0; guard < 300; guard++) {
+    if (text) { await say(text); await sleep(150); text = ''; }
     const alts = await listen(kind);
     if (G.micBlocked) {
       $('warn').textContent = "Microphone is blocked, so I stopped. Allow the mic for this site (iPhone: Settings → Safari → Microphone), or pick Listen only in Settings.";
@@ -272,11 +273,17 @@ async function ask(prompt, parse, kind) {
       G.running = false;
       throw STOP;
     }
-    if (!alts) { misses++; text = misses === 1 ? `Say again. ${prompt}` : prompt; continue; }
+    if (!alts) {
+      // Silence: keep listening quietly until the minute is up.
+      if (G.silent || Date.now() >= deadline) return null;
+      if (!reminded && Date.now() >= deadline - ANSWER_WAIT_MS / 2) { reminded = true; text = prompt; }
+      else await sleep(300);
+      continue;
+    }
     const cmd = alts.map(parseCommand).find(Boolean);
-    if (cmd) { text = await runCommand(cmd, prompt); continue; }
+    if (cmd) { text = await runCommand(cmd, prompt); deadline = Date.now() + ANSWER_WAIT_MS; continue; }
     for (const a of alts) { const v = parse(a); if (v !== null) return v; }
-    misses++;
+    if (++misheard >= 3) return null;
     text = `I heard ${alts[0]}. ${prompt}`;
   }
   return null;
