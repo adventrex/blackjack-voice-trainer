@@ -267,10 +267,10 @@ async function ask(prompt, parse, kind) {
     await sleep(150);
     const alts = await listen(kind);
     if (G.micBlocked) {
-      G.settings.mode = 'listen'; syncSettings();
-      $('warn').textContent = 'Microphone is blocked. Switched to listen-only mode. Allow mic for this site in Safari settings to talk.';
-      await say("I can't use the microphone, so I switched to listen only mode.");
-      return null;
+      $('warn').textContent = "Microphone is blocked, so I stopped. Allow the mic for this site (iPhone: Settings → Safari → Microphone), or pick Listen only in Settings.";
+      await say("I can't hear you. The microphone is blocked, so I'm stopping.");
+      G.running = false;
+      throw STOP;
     }
     if (!alts) { misses++; text = misses === 1 ? `Say again. ${prompt}` : prompt; continue; }
     const cmd = alts.map(parseCommand).find(Boolean);
@@ -485,7 +485,6 @@ async function countCheck() {
   const prev = G.rcAtCheck, cards = G.handCards;
   G.rcAtCheck = rc; G.handCards = [];
   const ans = await ask('Count?', parseCount, 'count');
-  if (G.settings.mode === 'listen') { await say(`It's ${countWords(rc)}.`); return; } // mic just got blocked
   if (ans === null) { await say(`Skipping that one. It's ${countWords(rc)}.`); return; }
   const ok = ans === rc;
   s.window.push(ok); if (s.window.length > 20) s.window.shift();
