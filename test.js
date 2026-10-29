@@ -37,3 +37,13 @@ for (const [t, want] of Object.entries(acts)) assert.strictEqual(L.parseAction(t
 const cmds = { 'add a player': 'addPlayer', 'remove a player': 'removePlayer', 'repeat that': 'repeat', 'pause': 'pause', "how am I doing": 'score', 'hit': null, 'minus three': null };
 for (const [t, want] of Object.entries(cmds)) assert.strictEqual(L.parseCommand(t), want, t);
 console.log('all logic tests passed');
+// Every strategy spot has a non-empty explanation for every wrong choice
+for (const h of [['10','6'],['A','7'],['8','8'],['10','10'],['5','5'],['6','5'],['9','9'],['10','2'],['A','A']])
+  for (const up of ['2','5','7','10','A']) {
+    const rec = bs(h, up);
+    for (const ch of ['H','S','D','P']) if (ch !== rec) {
+      const e = L.explainPlay(C(h), { r: up, s: '♠' }, rec, ch);
+      assert.ok(e && e.length > 20 && !/undefined|NaN/.test(e), `${h} vs ${up} ${ch}: ${e}`);
+    }
+  }
+console.log('explanations ok');

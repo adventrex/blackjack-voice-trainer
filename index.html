@@ -140,7 +140,7 @@
       <p>On your turn say <b>hit</b>, <b>stand</b>, <b>double</b> or <b>split</b>. After each hand you'll hear <b>"Running count?"</b> — say a number like <b>"plus three"</b>, <b>"minus two"</b> or <b>"zero"</b>.</p>
       <p>Hit <b>80% over your last 20 count checks</b> and a player is added automatically (up to 7).</p>
       <p>Anytime you're asked something you can also say: <b>repeat</b>, <b>score</b>, <b>pause</b> (then <b>resume</b>), <b>add a player</b>, <b>remove a player</b>, <b>slower</b>, <b>faster</b>.</p>
-      <p>Rules: 6 decks, dealer stands on soft 17, double after split, one split per hand, reshuffle at 75%. If you go against basic strategy, it tells you.</p>
+      <p>Rules: 6 decks, dealer stands on soft 17, double after split, one split per hand, reshuffle at 75%. If you go against basic strategy, it explains why. If you miss the count, it walks through that hand's low and high cards.</p>
     </div>
   </details>
 </main>
@@ -154,7 +154,7 @@ const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const G = {
   settings: { mode: 'mic', players: 1, rate: 1.05, delay: 5 },
   stats: { window: [], total: 0, correct: 0, hands: 0 },
-  shoe: [], cut: 0, rc: 0, dealer: [], holeHidden: true, seats: [],
+  shoe: [], cut: 0, rc: 0, rcAtCheck: 0, handCards: [], dealer: [], holeHidden: true, seats: [],
   running: false, showCount: false, voice: null, rec: null,
   pendingInput: null, onInput: null, lastPrompt: '',
   silent: false, autoInput: null, // test hooks
@@ -303,7 +303,7 @@ const cardsWords = cards => cards.map(c => rankWord(c.r)).join(', ');
 const isBJ = h => h.cards.length === 2 && !h.fromSplit && handValue(h.cards).total === 21;
 const upCard = () => G.dealer[0];
 
-function draw() { const c = G.shoe.pop(); G.rc += hiLo(c.r); return c; }
+function draw() { const c = G.shoe.pop(); G.rc += hiLo(c.r); G.handCards.push(c); return c; }
 
 function tableSummary() {
   const you = youSeat();
@@ -322,7 +322,7 @@ function scoreSpeech() {
 
 async function playHand() {
   if (G.shoe.length < G.cut || !G.shoe.length) {
-    G.shoe = makeShoe(6); G.cut = Math.floor(G.shoe.length * 0.25); G.rc = 0;
+    G.shoe = makeShoe(6); G.cut = Math.floor(G.shoe.length * 0.25); G.rc = 0; G.rcAtCheck = 0; G.handCards = [];
     await say('New shoe. The count starts at zero.');
   }
   const n = G.settings.players;
@@ -361,7 +361,7 @@ async function playHand() {
   await sleep(600);
 }
 
-function flipHole() { G.dealer.push(G.hole); G.rc += hiLo(G.hole.r); G.holeHidden = false; render(); }
+function flipHole() { G.dealer.push(G.hole); G.rc += hiLo(G.hole.r); G.handCards.push(G.hole); G.holeHidden = false; render(); }
 
 async function playSeat(seat) {
   for (let i = 0; i < seat.hands.length; i++) { G.activeHand = i; render(); await playOneHand(seat, seat.hands[i]); }
@@ -384,7 +384,9 @@ async function playOneHand(seat, h) {
       const prompt = `${first && seat.hands.length > 1 ? `Hand ${seat.hands.indexOf(h) + 1}. ` : ''}${first ? `You have ${valueWords(h.cards)} against ${rankWord(upCard().r)}. ` : ''}${opts.slice(0, -1).join(', ')} or ${opts[opts.length - 1]}?`;
       let ans = await ask(prompt, a => { const x = parseAction(a); return x && opts.map(o => o.toLowerCase()).includes(ACTION_WORD[x]) ? x : null; }, 'action:' + rec);
       if (ans === null) { ans = rec; await say(`No answer, so I'll ${ACTION_WORD[rec]}.`); }
-      else if (ans !== rec) await say(`Basic strategy says ${ACTION_WORD[rec]}.`);
+      else if (ans !== rec) await say(`You said ${ACTION_WORD[ans]}, but basic strategy says ${ACTION_WORD[rec]}. ${explainPlay(h.cards, upCard(), rec, ans)} Playing your ${ACTION_WORD[ans]}.`);
+      else if (ans === 'S') await say(`Standing on ${valueWords(h.cards)}.`);
+      else if (ans === 'H') await say('Hit.');
       act = ans;
     } else if (seat.you) {
       await say(`You ${ACTION_WORD[act]} on ${valueWords(h.cards)}.`);
@@ -399,7 +401,7 @@ async function playOneHand(seat, h) {
       if (h.cards[0].r === 'A') h.splitAces = nh.splitAces = true;
       render();
       const msg = `splits. First hand gets ${rankWord(h.cards[1].r)}, ${valueWords(h.cards)}. Second hand gets ${rankWord(nh.cards[1].r)}, ${valueWords(nh.cards)}.`;
-      if (seat.you) await say('You ' + msg); else await say(`${seat.name} ${msg}`);
+      if (seat.you) await say('You split.' + msg.slice('splits.'.length)); else await say(`${seat.name} ${msg}`);
       continue;
     }
     const c = draw();
@@ -451,11 +453,14 @@ async function settle(dealerBJ) {
 async function countCheck() {
   const rc = G.rc, s = G.stats;
   if (G.settings.mode === 'listen') {
+    G.rcAtCheck = rc; G.handCards = [];
     await say('Running count?');
     await sleep(G.settings.delay * 1000);
     await say(`It's ${countWords(rc)}.`);
     return;
   }
+  const prev = G.rcAtCheck, cards = G.handCards;
+  G.rcAtCheck = rc; G.handCards = [];
   const ans = await ask('Running count?', parseCount, 'count');
   if (G.settings.mode === 'listen') { await say(`It's ${countWords(rc)}.`); return; } // mic just got blocked
   if (ans === null) { await say(`Skipping that one. It's ${countWords(rc)}.`); return; }
@@ -463,7 +468,7 @@ async function countCheck() {
   s.window.push(ok); if (s.window.length > 20) s.window.shift();
   s.total++; if (ok) s.correct++;
   save(); render();
-  await say(ok ? `Correct, ${countWords(rc)}.` : `No, it's ${countWords(rc)}. You said ${countWords(ans)}.`);
+  await say(ok ? `Correct, ${countWords(rc)}.` : `No, it's ${countWords(rc)}. You said ${countWords(ans)}. ${explainCount(ans, rc, prev, cards)}`);
 
   const hits = s.window.filter(Boolean).length;
   if (s.window.length >= 20 && hits >= 16 && G.settings.players < 7) {
@@ -472,6 +477,18 @@ async function countCheck() {
   } else if (s.total % 10 === 0) {
     await say(`${Math.round(100 * hits / s.window.length)} percent on your last ${s.window.length}.`);
   }
+}
+
+// Why a count answer was wrong: a likely-cause hint, then this hand's low/high card math.
+function explainCount(ans, rc, prev, cards) {
+  const lows = cards.filter(c => hiLo(c.r) === 1).length, highs = cards.filter(c => hiLo(c.r) === -1).length;
+  const net = lows - highs, hole = G.dealer[1];
+  let hint = '';
+  if (ans === prev && net !== 0) hint = 'Sounds like you missed this hand. ';
+  else if (hole && hiLo(hole.r) !== 0 && ans === rc - hiLo(hole.r)) hint = `Did you count the dealer's face down card, the ${rankWord(hole.r)}? `;
+  else if (ans === -rc) hint = 'Right number, wrong sign. ';
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  return `${hint}You came in at ${countWords(prev)}. This hand had ${plural(lows, 'low card')} and ${plural(highs, 'high card')}, so ${countWords(net)}. That makes ${countWords(rc)}.`;
 }
 
 async function run() {

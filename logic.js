@@ -60,6 +60,48 @@ function basicStrategy(cards, up, canDouble, canSplit) {
 
 const ACTION_WORD = { H: 'hit', S: 'stand', D: 'double', P: 'split' };
 
+// One or two spoken sentences on why basic strategy picks `rec` over `chosen`.
+function explainPlay(cards, up, rec, chosen) {
+  const u = up.r === 'A' ? 11 : cardVal(up.r);
+  const upW = u === 11 ? 'an Ace' : u === 8 ? 'an 8' : `a ${u}`;
+  const weak = u <= 6;
+  const { total, soft } = handValue(cards);
+  const pair = cards.length === 2 && cardVal(cards[0].r) === cardVal(cards[1].r) ? cardVal(cards[0].r) : 0;
+
+  if (rec === 'P') {
+    if (pair === 1) return 'Always split Aces. Two hands starting at 11 beat one soft 12.';
+    if (pair === 8) return 'Always split 8s. 16 is the worst hand in blackjack, and two hands starting at 8 do much better.';
+    if (pair === 9) return `Split 9s against ${upW}. 18 is not strong enough here, and two hands starting at 9 win more.`;
+    return `Split against ${upW}. The dealer is weak enough that two hands starting at ${pair} make you more money than one ${total}.`;
+  }
+  if (chosen === 'P') {
+    if (pair === 10) return 'Never split 10s. 20 already wins most of the time.';
+    if (pair === 5) return 'Never split 5s. Treat it as a 10, which is a great doubling hand.';
+    if (pair === 9) return `Don't split 9s against ${upW}. Your 18 is good enough to stand.`;
+    return `Don't split against ${upW}. The dealer is too strong, so two weak hands just lose twice.`;
+  }
+  if (rec === 'D') {
+    if (soft) return `Double soft ${total} against ${upW}. The dealer is weak and likely to bust, and an Ace means one card can't bust you, so get more money out.`;
+    if (total === 11) return `Double 11 against ${upW}. Any 10 gives you 21, and the dealer can't beat that often.`;
+    return `Double ${total} against ${upW}. You're likely to end on a strong hand while the dealer is ${weak ? 'weak' : 'not strong enough'}, so get more money out.`;
+  }
+  if (chosen === 'D') {
+    if (total >= 12 && !soft) return `Never double a hard ${total}. Too many cards bust you, and you only get one.`;
+    if (total === 11 && u === 11) return "Don't double 11 against an Ace. The dealer is too strong, so just hit.";
+    return `Don't double ${soft ? 'soft ' : ''}${total} against ${upW}. The dealer isn't weak enough to risk extra money with only one card.`;
+  }
+  if (rec === 'S') {
+    if (soft) return `Stand on soft ${total}. It already beats what ${upW} usually makes.`;
+    if (total >= 17) return `Stand on ${total}. Hitting busts you too often.`;
+    return `Dealer shows ${upW}, a bust card. The dealer must hit and busts a lot, so let them take the risk.`;
+  }
+  // rec === 'H'
+  if (soft) return `Hit soft ${total}. The Ace counts as 1 if needed, so you can't bust, and ${total} is an underdog against ${upW}.`;
+  if (total <= 11) return `With ${total} you can't bust, so always take a card.`;
+  if (total === 12 && u <= 3) return `Hit 12 against ${upW}. Only a 10 busts you, and a 2 or 3 is not a weak enough dealer to stand.`;
+  return `Dealer shows ${upW}, so expect them to make 17 or better. ${total} loses unless you improve it.`;
+}
+
 // ---- Speech parsing ----
 
 const NUM = {
@@ -120,6 +162,6 @@ const isResume = text => /\b(resume|go|continue|start|ready|play|unpause|deal|ok
 const countWords = n => (n > 0 ? `plus ${n}` : n < 0 ? `minus ${-n}` : 'zero');
 
 if (typeof module !== 'undefined') {
-  module.exports = { hiLo, cardVal, rankWord, handValue, makeShoe, basicStrategy, ACTION_WORD,
+  module.exports = { hiLo, cardVal, rankWord, handValue, makeShoe, basicStrategy, ACTION_WORD, explainPlay,
     parseCount, parseAction, parseCommand, isResume, countWords };
 }
