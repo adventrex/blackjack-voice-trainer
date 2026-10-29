@@ -253,9 +253,10 @@ function listen(kind, ms = 7000) {
   if (G.silent) return Promise.resolve(G.autoInput ? [G.autoInput(kind)] : null);
   return new Promise(resolve => {
     let alts = null, finished = false, r = null;
+    let quiet = null;
     const finish = () => {
       if (finished) return;
-      finished = true; clearTimeout(timer);
+      finished = true; clearTimeout(timer); clearTimeout(quiet);
       G.rec = null; G.onInput = null; $('listening').classList.remove('on');
       if (alts) log('▸ ' + alts[0], 'heard');
       resolve(alts);
@@ -263,15 +264,26 @@ function listen(kind, ms = 7000) {
     G.onInput = text => { alts = [text]; try { r && r.abort(); } catch (e) {} finish(); };
     const tapOnly = G.settings.mode === 'tap' || G.micBlocked;
     // Buttons-only play waits as long as it takes; talking gives up after `ms` and ask() listens again.
-    const timer = tapOnly ? null : setTimeout(() => { try { r && r.abort(); } catch (e) {} finish(); }, ms);
+    // stop() keeps what was said; abort() throws it away. Give the recognizer a moment to hand it over.
+    const wrapUp = () => { try { r && r.stop(); } catch (e) {} setTimeout(finish, 1200); };
+    const timer = tapOnly ? null : setTimeout(() => { if (alts) wrapUp(); else { try { r && r.abort(); } catch (e) {} finish(); } }, ms);
     $('listening').textContent = tapOnly ? '👆 Tap your answer' : '🎙 Listening…';
     $('listening').classList.add('on');
     if (tapOnly || !Recognition) return; // only the on-screen buttons can answer
     r = new Recognition();
-    r.lang = 'en-US'; r.interimResults = false; r.maxAlternatives = 5; r.continuous = false;
-    r.onresult = e => { const res = e.results[e.results.length - 1]; alts = Array.from(res, a => a.transcript); };
+    r.lang = 'en-US'; r.interimResults = true; r.maxAlternatives = 5; r.continuous = false;
+    r.onresult = e => {
+      const res = Array.from(e.results), last = res[res.length - 1];
+      const lead = res.slice(0, -1).map(x => x[0].transcript).join(' ');
+      alts = Array.from(last, a => (lead + ' ' + a.transcript).trim());
+      $('listening').textContent = '🎙 ' + alts[0];
+      clearTimeout(quiet);
+      // iPhone Safari often keeps listening after you stop talking, so end it ourselves after a short pause.
+      if (last.isFinal) finish(); else quiet = setTimeout(wrapUp, 1200);
+    };
     r.onerror = e => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') G.micBlocked = true;
+      else if (e.error !== 'no-speech' && e.error !== 'aborted') $('warn').textContent = 'Mic problem: ' + e.error;
       finish();
     };
     r.onend = finish;
@@ -295,7 +307,7 @@ const ANSWER_WAIT_MS = 60000;
 async function ask(prompt, parse, kind) {
   let text = prompt, misheard = 0, deadline = Date.now() + ANSWER_WAIT_MS, reminded = false;
   for (let guard = 0; guard < 300; guard++) {
-    if (text) { await say(text); await sleep(150); text = ''; }
+    if (text) { await say(text); await sleep(400); text = ''; }
     let alts = await listen(kind);
     const raise = alts && alts.map(a => extractBet(a, G.settings.unit)).find(Boolean);
     if (raise) {
