@@ -60,6 +60,27 @@ function basicStrategy(cards, up, canDouble, canSplit) {
 
 const ACTION_WORD = { H: 'hit', S: 'stand', D: 'double', P: 'split' };
 
+// ---- Betting ----
+// True count = running count / decks left. Each +1 true count is worth about +0.5% to the player;
+// these rules (6 decks, S17, DAS) start at about a 0.5% house edge, so the player is even at +1.
+const trueCount = (rc, cardsLeft) => rc / Math.max(cardsLeft / 52, 0.5);
+const edgePct = tc => 0.5 * tc - 0.5;
+// Bet ramp in units, from the true count rounded down: +1 or less = 1, +2 = 2, +3 = 4, +4 = 6, +5 or more = 8.
+function correctBet(tc) {
+  const t = Math.floor(tc);
+  return t <= 1 ? 1 : t === 2 ? 2 : t === 3 ? 4 : t === 4 ? 6 : 8;
+}
+
+function parseBet(text, unitDollars) {
+  const t = String(text).toLowerCase();
+  if (/\b(min|minimum)\b/.test(t)) return 1;
+  if (/\b(max|maximum)\b/.test(t)) return 8;
+  const n = parseCount(t.replace(/\$/g, ' '));
+  if (n === null || n === 0) return null;
+  const dollars = /\$|dollar|bucks/.test(t);
+  return Math.max(1, Math.round(Math.abs(n) / (dollars ? unitDollars : 1)));
+}
+
 // One or two spoken sentences on why basic strategy picks `rec` over `chosen`.
 function explainPlay(cards, up, rec, chosen) {
   const u = up.r === 'A' ? 11 : cardVal(up.r);
@@ -162,6 +183,6 @@ const isResume = text => /\b(resume|go|continue|start|ready|play|unpause|deal|ok
 const countWords = n => (n > 0 ? `plus ${n}` : n < 0 ? `minus ${-n}` : 'zero');
 
 if (typeof module !== 'undefined') {
-  module.exports = { hiLo, cardVal, rankWord, handValue, makeShoe, basicStrategy, ACTION_WORD, explainPlay,
+  module.exports = { hiLo, cardVal, rankWord, handValue, makeShoe, basicStrategy, ACTION_WORD, explainPlay, trueCount, edgePct, correctBet, parseBet,
     parseCount, parseAction, parseCommand, isResume, countWords };
 }

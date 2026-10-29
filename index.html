@@ -36,7 +36,7 @@
   .total { font-size: 13px; color: var(--muted); }
   .tag { font-size: 12px; font-weight: 700; }
   .tag.win { color: var(--good); } .tag.lose { color: var(--bad); } .tag.push { color: var(--gold); }
-  .bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
   .stat { background: var(--panel); border-radius: 10px; padding: 8px; text-align: center; }
   .stat b { display: block; font-size: 20px; }
   .countTile { cursor: pointer; user-select: none; }
@@ -62,7 +62,7 @@
   .help { font-size: 14px; color: var(--muted); }
   .help b { color: var(--ink); }
   .warn { color: var(--bad); font-size: 14px; margin-top: 8px; }
-  @media (max-width: 480px) { .bar { grid-template-columns: repeat(2, 1fr); } .card { width: 38px; height: 54px; font-size: 15px; } }
+  @media (max-width: 480px) { .bar { grid-template-columns: repeat(3, 1fr); } .card { width: 38px; height: 54px; font-size: 15px; } }
 </style>
 </head>
 <body>
@@ -85,6 +85,7 @@
     <div class="stat"><span class="label">Last 20</span><b id="sWindow">—</b></div>
     <div class="stat"><span class="label">Players</span><b id="sPlayers">1</b></div>
     <div class="stat"><span class="label">Decks left</span><b id="sDecks">6.0</b></div>
+    <div class="stat"><span class="label">Units</span><b id="sUnits">0</b></div>
     <div class="stat countTile" id="countTile" title="Tap to show/hide"><span class="label">Count</span><b id="sCount">tap</b></div>
   </div>
 
@@ -128,6 +129,10 @@
       <label>Listen-only pause before the answer: <span id="delayVal"></span>s
         <input type="range" id="delay" min="2" max="12" step="1">
       </label>
+      <label><span><input type="checkbox" id="bets"> Bet practice: ask "Your bet?" before each hand</span></label>
+      <label>Betting unit
+        <select id="unit"><option>5</option><option>10</option><option>25</option><option>50</option><option>100</option></select>
+      </label>
       <button class="btn secondary" id="resetBtn">Reset my stats</button>
     </div>
   </details>
@@ -138,6 +143,7 @@
       <p>Set it up <b>before you drive</b>, tap Start, then put the phone down. Keep Safari open on screen (your car's map can stay on CarPlay).</p>
       <p>Every card is read aloud. Keep the Hi-Lo running count in your head: <b>2–6 = +1</b>, <b>7–9 = 0</b>, <b>10/face/Ace = −1</b>. The dealer's face-down card counts when it's flipped.</p>
       <p>On your turn say <b>hit</b>, <b>stand</b>, <b>double</b> or <b>split</b>. After each hand you'll hear <b>"Running count?"</b> — say a number like <b>"plus three"</b>, <b>"minus two"</b> or <b>"zero"</b>.</p>
+      <p><b>Betting:</b> before each hand you'll hear <b>"Your bet?"</b> Say units (<b>"two"</b>) or dollars (<b>"twenty dollars"</b>). Work out the <b>true count</b> = running count ÷ decks left, then bet: true count <b>+1 or less → 1 unit</b>, <b>+2 → 2</b>, <b>+3 → 4</b>, <b>+4 → 6</b>, <b>+5 or more → 8</b>. Each +1 of true count is worth about +0.5% to you; the house is ahead until about +1. Bet wrong and it tells you the right bet and why.</p>
       <p>Hit <b>80% over your last 20 count checks</b> and a player is added automatically (up to 7).</p>
       <p>Anytime you're asked something you can also say: <b>repeat</b>, <b>score</b>, <b>pause</b> (then <b>resume</b>), <b>add a player</b>, <b>remove a player</b>, <b>slower</b>, <b>faster</b>.</p>
       <p>Rules: 6 decks, dealer stands on soft 17, double after split, one split per hand, reshuffle at 75%. If you go against basic strategy, it explains why. If you miss the count, it walks through that hand's low and high cards.</p>
@@ -152,8 +158,8 @@ const $ = id => document.getElementById(id);
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const G = {
-  settings: { mode: 'mic', players: 1, rate: 1.05, delay: 5 },
-  stats: { window: [], total: 0, correct: 0, hands: 0 },
+  settings: { mode: 'mic', players: 1, rate: 1.05, delay: 5, bets: true, unit: 10 },
+  stats: { window: [], total: 0, correct: 0, hands: 0, units: 0, betTotal: 0, betCorrect: 0 },
   shoe: [], cut: 0, rc: 0, rcAtCheck: 0, handCards: [], dealer: [], holeHidden: true, seats: [],
   running: false, showCount: false, voice: null, rec: null,
   pendingInput: null, onInput: null, lastPrompt: '',
@@ -317,7 +323,44 @@ function scoreSpeech() {
   const pct = w.length ? Math.round(100 * w.filter(Boolean).length / w.length) : null;
   const overall = G.stats.total ? Math.round(100 * G.stats.correct / G.stats.total) : null;
   if (pct === null && overall === null) return 'No count checks yet.';
-  return `${pct === null ? '' : `${pct} percent on your last ${w.length} at this level.`} ${overall === null ? '' : `${overall} percent overall.`} ${G.settings.players} at the table.`;
+  const st = G.stats;
+  const bets = st.betTotal ? ` Bets right ${Math.round(100 * st.betCorrect / st.betTotal)} percent. You're ${st.units >= 0 ? 'up' : 'down'} ${unitsWords(Math.abs(st.units))}.` : '';
+  return `${pct === null ? '' : `${pct} percent on your last ${w.length} at this level.`} ${overall === null ? '' : `${overall} percent overall.`}${bets} ${G.settings.players} at the table.`;
+}
+
+const unitsWords = u => `${u} unit${u === 1 ? '' : 's'}`;
+const betWords = u => `${unitsWords(u)}, ${u * G.settings.unit} dollars`;
+const oneDecimal = x => String(+x.toFixed(1));
+const tcWords = tc => (Math.abs(tc) < 0.05 ? 'zero' : `${tc > 0 ? 'plus' : 'minus'} ${oneDecimal(Math.abs(tc))}`);
+
+// Before each hand: ask for a bet, then check it against the true count and the bet ramp.
+// Decks left are rounded to the nearest half deck, the way you'd eyeball a discard tray.
+async function betCheck() {
+  if (!G.settings.bets) return 1;
+  const decks = Math.max(0.5, Math.round(G.shoe.length / 26) / 2);
+  const tc = trueCount(G.rc, decks * 52), right = correctBet(tc), edge = edgePct(tc);
+  const why = `True count is ${tcWords(tc)}: running ${countWords(G.rc)} divided by ${decks} decks left.`;
+  const edgeSay = edge >= 0.05 ? `You have about a ${oneDecimal(edge)} percent edge.`
+    : edge <= -0.05 ? `The house has about a ${oneDecimal(-edge)} percent edge.` : "It's about even.";
+  if (G.settings.mode === 'listen') {
+    await say('Your bet?');
+    await sleep(G.settings.delay * 1000);
+    await say(`Bet ${betWords(right)}. ${why} ${right > 1 ? edgeSay : ''}`);
+    return right;
+  }
+  const ans = await ask('Your bet?', a => parseBet(a, G.settings.unit), 'bet:' + right);
+  if (ans === null) { await say(`Skipping. Bet ${betWords(right)}. ${why}`); return right; }
+  const st = G.stats;
+  st.betTotal++;
+  if (ans === right) {
+    st.betCorrect++;
+    await say(edge >= 0.05 ? `Good bet. ${edgeSay}` : 'Good.');
+  } else {
+    const lead = ans < right ? 'Raise your bet.' : right === 1 ? 'Too much. Bet the minimum.' : 'Too much.';
+    await say(`${lead} ${why} ${edgeSay} Bet ${betWords(right)}. Playing your ${unitsWords(ans)}.`);
+  }
+  save();
+  return ans;
 }
 
 async function playHand() {
@@ -325,10 +368,11 @@ async function playHand() {
     G.shoe = makeShoe(6); G.cut = Math.floor(G.shoe.length * 0.25); G.rc = 0; G.rcAtCheck = 0; G.handCards = [];
     await say('New shoe. The count starts at zero.');
   }
+  const bet = await betCheck();
   const n = G.settings.players;
   G.seats = [];
   for (let i = 1; i < n; i++) G.seats.push({ name: `Seat ${i}`, you: false, hands: [{ cards: [] }] });
-  G.seats.push({ name: 'You', you: true, hands: [{ cards: [] }] });
+  G.seats.push({ name: 'You', you: true, hands: [{ cards: [], bet }] });
   G.dealer = []; G.holeHidden = true; G.activeSeat = -1; G.activeHand = 0;
 
   // Deal: one card each, dealer up, one card each, dealer hole (not counted until flipped).
@@ -394,7 +438,7 @@ async function playOneHand(seat, h) {
     first = false;
     if (act === 'S') { if (!seat.you) spoken.push(`stands on ${v.total}`); break; }
     if (act === 'P') {
-      const nh = { cards: [h.cards.pop()], fromSplit: true };
+      const nh = { cards: [h.cards.pop()], fromSplit: true, bet: h.bet };
       h.fromSplit = true;
       seat.hands.splice(seat.hands.indexOf(h) + 1, 0, nh);
       h.cards.push(draw()); nh.cards.push(draw());
@@ -443,7 +487,12 @@ async function settle(dealerBJ) {
     else if (dealerBJ || v > 21) h.result = 'lose';
     else if (d > 21 || v > d) h.result = 'win';
     else h.result = v === d ? 'push' : 'lose';
-    if (s.you) out.push(h.result === 'win' ? (isBJ(h) ? 'Blackjack pays.' : 'You win.') : h.result === 'push' ? 'Push.' : 'You lose.');
+    if (s.you) {
+      const won = h.result === 'push' ? 0 : (h.result === 'win' ? 1 : -1) * h.bet * (h.doubled ? 2 : 1) * (isBJ(h) && h.result === 'win' ? 1.5 : 1);
+      G.stats.units += won;
+      const amt = G.settings.bets ? ` ${unitsWords(Math.abs(won))}` : '';
+      out.push(h.result === 'win' ? (isBJ(h) ? `Blackjack pays${amt}.` : `You win${amt}.`) : h.result === 'push' ? 'Push.' : `You lose${amt}.`);
+    }
   }
   render();
   const you = youSeat();
@@ -541,6 +590,7 @@ function render() {
   $('sWindow').textContent = w.length ? `${Math.round(100 * w.filter(Boolean).length / w.length)}% (${w.length})` : '—';
   $('sPlayers').textContent = G.settings.players;
   $('sDecks').textContent = (G.shoe.length / 52 || 6).toFixed(1);
+  $('sUnits').textContent = (G.stats.units > 0 ? '+' : '') + G.stats.units;
   $('sCount').textContent = G.showCount ? countWords(G.rc).replace('plus ', '+').replace('minus ', '−') : 'tap';
   $('manual').style.display = G.settings.mode === 'listen' ? 'none' : '';
 }
@@ -548,6 +598,7 @@ function render() {
 // ---------- controls ----------
 function syncSettings() {
   const s = G.settings;
+  $('bets').checked = s.bets; $('unit').value = String(s.unit);
   $('mode').value = s.mode; $('players').value = s.players; $('rate').value = s.rate; $('delay').value = s.delay;
   $('playersVal').textContent = s.players === 1 ? '1 (heads up)' : s.players;
   $('rateVal').textContent = s.rate.toFixed(2) + '×';
@@ -578,9 +629,11 @@ $('kSend').onclick = () => { input(String(kVal)); };
 $('countTile').onclick = () => { G.showCount = !G.showCount; render(); };
 $('mode').onchange = e => { G.settings.mode = e.target.value; save(); syncSettings(); };
 $('players').oninput = e => { G.settings.players = +e.target.value; G.stats.window = []; save(); syncSettings(); };
+$('bets').onchange = e => { G.settings.bets = e.target.checked; save(); syncSettings(); };
+$('unit').onchange = e => { G.settings.unit = +e.target.value; save(); syncSettings(); };
 $('rate').oninput = e => { G.settings.rate = +e.target.value; save(); syncSettings(); };
 $('delay').oninput = e => { G.settings.delay = +e.target.value; save(); syncSettings(); };
-$('resetBtn').onclick = () => { if (confirm('Reset your count stats and go back to heads up?')) { G.stats = { window: [], total: 0, correct: 0, hands: 0 }; G.settings.players = 1; save(); syncSettings(); } };
+$('resetBtn').onclick = () => { if (confirm('Reset your count stats and go back to heads up?')) { G.stats = { window: [], total: 0, correct: 0, hands: 0, units: 0, betTotal: 0, betCorrect: 0 }; G.settings.players = 1; save(); syncSettings(); } };
 
 load();
 syncSettings();

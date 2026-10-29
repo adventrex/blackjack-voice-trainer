@@ -47,3 +47,10 @@ for (const h of [['10','6'],['A','7'],['8','8'],['10','10'],['5','5'],['6','5'],
     }
   }
 console.log('explanations ok');
+// Betting
+assert.strictEqual(L.trueCount(6, 156), 2);           // +6 with 3 decks left
+assert.strictEqual(L.edgePct(1), 0);
+assert.deepStrictEqual([-3, 0, 1.9, 2, 2.9, 3.5, 4.1, 5, 9].map(L.correctBet), [1, 1, 1, 2, 2, 4, 6, 8, 8]);
+const bets = { 'two': 2, 'two units': 2, '4': 4, 'thirty dollars': 3, '$40': 4, 'minimum': 1, 'one': 1, 'max': 8, 'banana': null };
+for (const [t, want] of Object.entries(bets)) assert.strictEqual(L.parseBet(t, 10), want, t);
+console.log('betting ok');
