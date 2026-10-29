@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b3d2a">
 <title>Count Drive</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <style>
-  :root {
+  /* Casino felt, one deliberate dark look in every theme. */
+  :root { color-scheme: dark;
     --felt: #0e5a3c; --felt-dark: #083a27; --gold: #e3c46a; --ink: #f4f1e8; --muted: #a9c4b6;
     --panel: rgba(0,0,0,.28); --good: #6fdc8c; --bad: #ff7b6b; --card: #fbfaf6; --red: #c8102e;
   }
@@ -16,7 +18,8 @@
     font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: radial-gradient(ellipse at 50% 30%, var(--felt) 0%, var(--felt-dark) 75%) fixed, var(--felt-dark);
   }
-  main { max-width: 760px; margin: 0 auto; padding: 16px 16px 40px; }
+  main { max-width: 760px; margin: 0 auto; padding-block: 16px 40px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   h1 { font-size: 22px; margin: 0; letter-spacing: .5px; color: var(--gold); }
   .sub { color: var(--muted); font-size: 13px; }
@@ -676,7 +679,17 @@ $('testVoice').onclick = () => {
 };
 $('rate').oninput = e => { G.settings.rate = +e.target.value; save(); syncSettings(); };
 $('delay').oninput = e => { G.settings.delay = +e.target.value; save(); syncSettings(); };
-$('resetBtn').onclick = () => { if (confirm('Reset your stats, bankroll back to $500, and go back to heads up?')) { G.stats = { window: [], total: 0, correct: 0, hands: 0, bank: 500, betTotal: 0, betCorrect: 0 }; G.settings.players = 1; save(); syncSettings(); } };
+// Two taps to reset (no popup dialogs: claude.ai blocks them).
+$('resetBtn').onclick = e => {
+  const b = e.currentTarget;
+  if (!b.dataset.armed) {
+    b.dataset.armed = '1'; b.textContent = 'Tap again to reset stats and bankroll to $500';
+    setTimeout(() => { delete b.dataset.armed; b.textContent = 'Reset my stats'; }, 4000);
+    return;
+  }
+  delete b.dataset.armed; b.textContent = 'Stats reset';
+  G.stats = { window: [], total: 0, correct: 0, hands: 0, bank: 500, betTotal: 0, betCorrect: 0 }; G.settings.players = 1; save(); syncSettings();
+};
 
 load();
 syncSettings();
