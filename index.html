@@ -85,7 +85,7 @@
     <div class="stat"><span class="label">Last 20</span><b id="sWindow">—</b></div>
     <div class="stat"><span class="label">Players</span><b id="sPlayers">1</b></div>
     <div class="stat"><span class="label">Decks left</span><b id="sDecks">6.0</b></div>
-    <div class="stat"><span class="label">Units</span><b id="sUnits">0</b></div>
+    <div class="stat"><span class="label">Bankroll</span><b id="sBank">$500</b></div>
     <div class="stat countTile" id="countTile" title="Tap to show/hide"><span class="label">Count</span><b id="sCount">tap</b></div>
   </div>
 
@@ -142,11 +142,11 @@
     <div class="help">
       <p>Set it up <b>before you drive</b>, tap Start, then put the phone down. Keep Safari open on screen (your car's map can stay on CarPlay).</p>
       <p>Every card is read aloud. Keep the Hi-Lo running count in your head: <b>2–6 = +1</b>, <b>7–9 = 0</b>, <b>10/face/Ace = −1</b>. The dealer's face-down card counts when it's flipped.</p>
-      <p>On your turn say <b>hit</b>, <b>stand</b>, <b>double</b> or <b>split</b>. After each hand you'll hear <b>"Running count?"</b> — say a number like <b>"plus three"</b>, <b>"minus two"</b> or <b>"zero"</b>.</p>
-      <p><b>Betting:</b> before each hand you'll hear <b>"Your bet?"</b> Say units (<b>"two"</b>) or dollars (<b>"twenty dollars"</b>). Work out the <b>true count</b> = running count ÷ decks left, then bet: true count <b>+1 or less → 1 unit</b>, <b>+2 → 2</b>, <b>+3 → 4</b>, <b>+4 → 6</b>, <b>+5 or more → 8</b>. Each +1 of true count is worth about +0.5% to you; the house is ahead until about +1. Bet wrong and it tells you the right bet and why.</p>
+      <p>On your turn say <b>hit</b>, <b>stand</b>, <b>double</b> or <b>split</b>. The table stays quiet except for cards. After each hand you'll hear <b>"Count?"</b> — say a number like <b>"plus three"</b>, <b>"minus two"</b> or <b>"zero"</b>.</p>
+      <p><b>Betting:</b> before each hand you'll hear <b>"Bet?"</b> Say dollars (<b>"ten dollars"</b>) or units of your betting unit (<b>"two"</b>). Default unit is $5; bankroll starts at $500. Work out the <b>true count</b> = running count ÷ decks left, then bet: true count <b>+1 or less → $5</b>, <b>+2 → $10</b>, <b>+3 → $20</b>, <b>+4 → $30</b>, <b>+5 or more → $40</b> (1/2/4/6/8 units). Each +1 of true count is worth about +0.5% to you; the house is ahead until about +1. Bet wrong and it tells you the right bet and why.</p>
       <p>Hit <b>80% over your last 20 count checks</b> and a player is added automatically (up to 7).</p>
       <p>Anytime you're asked something you can also say: <b>repeat</b>, <b>score</b>, <b>pause</b> (then <b>resume</b>), <b>add a player</b>, <b>remove a player</b>, <b>slower</b>, <b>faster</b>.</p>
-      <p>Rules: 6 decks, dealer stands on soft 17, double after split, one split per hand, reshuffle at 75%. If you go against basic strategy, it explains why. If you miss the count, it walks through that hand's low and high cards.</p>
+      <p>Rules: 6 decks, dealer stands on soft 17, double after split, one split per hand, reshuffle at 75%. You only hear more than cards when you make a mistake: a wrong play, a wrong count or a wrong bet gets the right answer and why. Say <b>score</b> for your accuracy and bankroll.</p>
     </div>
   </details>
 </main>
@@ -158,8 +158,8 @@ const $ = id => document.getElementById(id);
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const G = {
-  settings: { mode: 'mic', players: 1, rate: 1.05, delay: 5, bets: true, unit: 10 },
-  stats: { window: [], total: 0, correct: 0, hands: 0, units: 0, betTotal: 0, betCorrect: 0 },
+  settings: { mode: 'mic', players: 1, rate: 1.05, delay: 5, bets: true, unit: 5 },
+  stats: { window: [], total: 0, correct: 0, hands: 0, bank: 500, betTotal: 0, betCorrect: 0 },
   shoe: [], cut: 0, rc: 0, rcAtCheck: 0, handCards: [], dealer: [], holeHidden: true, seats: [],
   running: false, showCount: false, voice: null, rec: null,
   pendingInput: null, onInput: null, lastPrompt: '',
@@ -324,12 +324,11 @@ function scoreSpeech() {
   const overall = G.stats.total ? Math.round(100 * G.stats.correct / G.stats.total) : null;
   if (pct === null && overall === null) return 'No count checks yet.';
   const st = G.stats;
-  const bets = st.betTotal ? ` Bets right ${Math.round(100 * st.betCorrect / st.betTotal)} percent. You're ${st.units >= 0 ? 'up' : 'down'} ${unitsWords(Math.abs(st.units))}.` : '';
+  const bets = st.betTotal ? ` Bets right ${Math.round(100 * st.betCorrect / st.betTotal)} percent. Bankroll ${G.stats.bank} dollars.` : '';
   return `${pct === null ? '' : `${pct} percent on your last ${w.length} at this level.`} ${overall === null ? '' : `${overall} percent overall.`}${bets} ${G.settings.players} at the table.`;
 }
 
-const unitsWords = u => `${u} unit${u === 1 ? '' : 's'}`;
-const betWords = u => `${unitsWords(u)}, ${u * G.settings.unit} dollars`;
+const betWords = u => `${u * G.settings.unit} dollars`;
 const oneDecimal = x => String(+x.toFixed(1));
 const tcWords = tc => (Math.abs(tc) < 0.05 ? 'zero' : `${tc > 0 ? 'plus' : 'minus'} ${oneDecimal(Math.abs(tc))}`);
 
@@ -343,21 +342,20 @@ async function betCheck() {
   const edgeSay = edge >= 0.05 ? `You have about a ${oneDecimal(edge)} percent edge.`
     : edge <= -0.05 ? `The house has about a ${oneDecimal(-edge)} percent edge.` : "It's about even.";
   if (G.settings.mode === 'listen') {
-    await say('Your bet?');
+    await say('Bet?');
     await sleep(G.settings.delay * 1000);
     await say(`Bet ${betWords(right)}. ${why} ${right > 1 ? edgeSay : ''}`);
     return right;
   }
-  const ans = await ask('Your bet?', a => parseBet(a, G.settings.unit), 'bet:' + right);
+  const ans = await ask('Bet?', a => parseBet(a, G.settings.unit), 'bet:' + right);
   if (ans === null) { await say(`Skipping. Bet ${betWords(right)}. ${why}`); return right; }
   const st = G.stats;
   st.betTotal++;
   if (ans === right) {
     st.betCorrect++;
-    await say(edge >= 0.05 ? `Good bet. ${edgeSay}` : 'Good.');
   } else {
     const lead = ans < right ? 'Raise your bet.' : right === 1 ? 'Too much. Bet the minimum.' : 'Too much.';
-    await say(`${lead} ${why} ${edgeSay} Bet ${betWords(right)}. Playing your ${unitsWords(ans)}.`);
+    await say(`${lead} ${why} ${edgeSay} Bet ${betWords(right)}. Playing your ${betWords(ans)}.`);
   }
   save();
   return ans;
@@ -366,7 +364,7 @@ async function betCheck() {
 async function playHand() {
   if (G.shoe.length < G.cut || !G.shoe.length) {
     G.shoe = makeShoe(6); G.cut = Math.floor(G.shoe.length * 0.25); G.rc = 0; G.rcAtCheck = 0; G.handCards = [];
-    await say('New shoe. The count starts at zero.');
+    await say('New shoe.');
   }
   const bet = await betCheck();
   const n = G.settings.players;
@@ -384,7 +382,6 @@ async function playHand() {
 
   const parts = G.seats.map(s => {
     const h = s.hands[0];
-    if (s.you) return `You: ${cardsWords(h.cards)}. ${isBJ(h) ? 'Blackjack!' : valueWords(h.cards) + '.'}`;
     return `${s.name}: ${cardsWords(h.cards)}.`;
   });
   await say(`${parts.join(' ')} Dealer shows ${rankWord(upCard().r)}.`);
@@ -393,13 +390,13 @@ async function playHand() {
     ? handValue([upCard(), G.hole]).total === 21 : false;
   if (dealerBJ) {
     flipHole();
-    await say(`Dealer flips ${rankWord(G.dealer[1].r)}. Dealer has blackjack.`);
+    await say(`Dealer flips ${rankWord(G.dealer[1].r)}.`);
   } else {
     for (let i = 0; i < G.seats.length; i++) { G.activeSeat = i; await playSeat(G.seats[i]); }
     G.activeSeat = -1;
     await playDealer();
   }
-  await settle(dealerBJ);
+  settle(dealerBJ);
   await countCheck();
   G.stats.hands++; save(); render();
   await sleep(600);
@@ -412,10 +409,9 @@ async function playSeat(seat) {
 }
 
 async function playOneHand(seat, h) {
-  if (isBJ(h)) { if (!seat.you) await say(`${seat.name} has blackjack.`); return; }
+  if (isBJ(h)) return;
   const you = seat.you && G.settings.mode === 'mic';
-  const spoken = []; // bot narration, said once at the end
-  let first = true;
+  const drawn = []; // other seats' new cards, said once at the end
   for (;;) {
     const v = handValue(h.cards);
     if (v.total >= 21 || h.splitAces || h.doubled) break;
@@ -425,18 +421,13 @@ async function playOneHand(seat, h) {
     let act = rec;
     if (you) {
       const opts = ['Hit', 'stand'].concat(canDouble ? ['double'] : [], canSplit ? ['split'] : []);
-      const prompt = `${first && seat.hands.length > 1 ? `Hand ${seat.hands.indexOf(h) + 1}. ` : ''}${first ? `You have ${valueWords(h.cards)} against ${rankWord(upCard().r)}. ` : ''}${opts.slice(0, -1).join(', ')} or ${opts[opts.length - 1]}?`;
+      const prompt = `${seat.hands.length > 1 ? `Hand ${seat.hands.indexOf(h) + 1}. ` : ''}Your move?`;
       let ans = await ask(prompt, a => { const x = parseAction(a); return x && opts.map(o => o.toLowerCase()).includes(ACTION_WORD[x]) ? x : null; }, 'action:' + rec);
       if (ans === null) { ans = rec; await say(`No answer, so I'll ${ACTION_WORD[rec]}.`); }
       else if (ans !== rec) await say(`You said ${ACTION_WORD[ans]}, but basic strategy says ${ACTION_WORD[rec]}. ${explainPlay(h.cards, upCard(), rec, ans)} Playing your ${ACTION_WORD[ans]}.`);
-      else if (ans === 'S') await say(`Standing on ${valueWords(h.cards)}.`);
-      else if (ans === 'H') await say('Hit.');
       act = ans;
-    } else if (seat.you) {
-      await say(`You ${ACTION_WORD[act]} on ${valueWords(h.cards)}.`);
     }
-    first = false;
-    if (act === 'S') { if (!seat.you) spoken.push(`stands on ${v.total}`); break; }
+    if (act === 'S') break;
     if (act === 'P') {
       const nh = { cards: [h.cards.pop()], fromSplit: true, bet: h.bet };
       h.fromSplit = true;
@@ -444,43 +435,30 @@ async function playOneHand(seat, h) {
       h.cards.push(draw()); nh.cards.push(draw());
       if (h.cards[0].r === 'A') h.splitAces = nh.splitAces = true;
       render();
-      const msg = `splits. First hand gets ${rankWord(h.cards[1].r)}, ${valueWords(h.cards)}. Second hand gets ${rankWord(nh.cards[1].r)}, ${valueWords(nh.cards)}.`;
-      if (seat.you) await say('You split.' + msg.slice('splits.'.length)); else await say(`${seat.name} ${msg}`);
+      if (seat.you) await say(`First hand: ${rankWord(h.cards[1].r)}. Second hand: ${rankWord(nh.cards[1].r)}.`);
+      else drawn.push(h.cards[1], nh.cards[1]);
       continue;
     }
     const c = draw();
     h.cards.push(c);
     if (act === 'D') h.doubled = true;
     render();
-    const nv = handValue(h.cards);
-    const result = nv.total > 21 ? 'bust' : valueWords(h.cards);
-    if (seat.you) await say(`${act === 'D' ? 'Doubling. ' : ''}${rankWord(c.r)}. ${nv.total > 21 ? 'Bust.' : result + '.'}`);
-    else spoken.push(`${act === 'D' ? 'doubles, ' : 'hits, '}${rankWord(c.r)}${nv.total > 21 ? ', bust' : ''}`);
+    if (seat.you) await say(`${rankWord(c.r)}.`);
+    else drawn.push(c);
   }
-  if (!seat.you && spoken.length) {
-    const last = handValue(h.cards).total;
-    const tail = last <= 21 && !/stands/.test(spoken[spoken.length - 1]) ? `, ${last}` : '';
-    await say(`${seat.name} ${spoken.join(', ')}${tail}.`);
-  }
+  if (drawn.length) await say(`${seat.name}: ${cardsWords(drawn)}.`);
 }
 
 async function playDealer() {
   flipHole();
   const live = G.seats.some(s => s.hands.some(h => handValue(h.cards).total <= 21 && !isBJ(h)));
-  const words = [`Dealer flips ${rankWord(G.dealer[1].r)}, ${valueWords(G.dealer)}.`];
-  if (live) {
-    while (handValue(G.dealer).total < 17) {
-      const c = draw(); G.dealer.push(c); render();
-      const v = handValue(G.dealer).total;
-      words.push(`Hits, ${rankWord(c.r)}, ${v > 21 ? 'dealer busts' : valueWords(G.dealer)}.`);
-    }
-  }
-  await say(words.join(' '));
+  const drawn = [];
+  if (live) while (handValue(G.dealer).total < 17) { const c = draw(); G.dealer.push(c); drawn.push(c); render(); }
+  await say(`Dealer flips ${rankWord(G.dealer[1].r)}.${drawn.length ? ` Dealer draws ${cardsWords(drawn)}.` : ''}`);
 }
 
-async function settle(dealerBJ) {
+function settle(dealerBJ) {
   const d = handValue(G.dealer).total;
-  const out = [];
   for (const s of G.seats) for (const h of s.hands) {
     const v = handValue(h.cards).total;
     if (isBJ(h)) h.result = dealerBJ ? 'push' : 'win';
@@ -489,42 +467,36 @@ async function settle(dealerBJ) {
     else h.result = v === d ? 'push' : 'lose';
     if (s.you) {
       const won = h.result === 'push' ? 0 : (h.result === 'win' ? 1 : -1) * h.bet * (h.doubled ? 2 : 1) * (isBJ(h) && h.result === 'win' ? 1.5 : 1);
-      G.stats.units += won;
-      const amt = G.settings.bets ? ` ${unitsWords(Math.abs(won))}` : '';
-      out.push(h.result === 'win' ? (isBJ(h) ? `Blackjack pays${amt}.` : `You win${amt}.`) : h.result === 'push' ? 'Push.' : `You lose${amt}.`);
+      if (G.settings.bets) G.stats.bank += won * G.settings.unit;
     }
   }
   render();
-  const you = youSeat();
-  await say(you.hands.length > 1 ? out.map((o, i) => `Hand ${i + 1}: ${o}`).join(' ') : out[0]);
 }
 
 async function countCheck() {
   const rc = G.rc, s = G.stats;
   if (G.settings.mode === 'listen') {
     G.rcAtCheck = rc; G.handCards = [];
-    await say('Running count?');
+    await say('Count?');
     await sleep(G.settings.delay * 1000);
     await say(`It's ${countWords(rc)}.`);
     return;
   }
   const prev = G.rcAtCheck, cards = G.handCards;
   G.rcAtCheck = rc; G.handCards = [];
-  const ans = await ask('Running count?', parseCount, 'count');
+  const ans = await ask('Count?', parseCount, 'count');
   if (G.settings.mode === 'listen') { await say(`It's ${countWords(rc)}.`); return; } // mic just got blocked
   if (ans === null) { await say(`Skipping that one. It's ${countWords(rc)}.`); return; }
   const ok = ans === rc;
   s.window.push(ok); if (s.window.length > 20) s.window.shift();
   s.total++; if (ok) s.correct++;
   save(); render();
-  await say(ok ? `Correct, ${countWords(rc)}.` : `No, it's ${countWords(rc)}. You said ${countWords(ans)}. ${explainCount(ans, rc, prev, cards)}`);
+  if (!ok) await say(`No, it's ${countWords(rc)}. You said ${countWords(ans)}. ${explainCount(ans, rc, prev, cards)}`);
 
   const hits = s.window.filter(Boolean).length;
   if (s.window.length >= 20 && hits >= 16 && G.settings.players < 7) {
     G.settings.players++; s.window = []; syncSettings(); save();
-    await say(`${Math.round(hits * 5)} percent on your last 20. Adding a player. ${G.settings.players} at the table now.`);
-  } else if (s.total % 10 === 0) {
-    await say(`${Math.round(100 * hits / s.window.length)} percent on your last ${s.window.length}.`);
+    await say('Adding a player.');
   }
 }
 
@@ -545,7 +517,7 @@ async function run() {
   $('startBtn').textContent = '■ Stop'; $('startBtn').classList.add('stop');
   keepAwake();
   try {
-    await say(G.settings.players === 1 ? 'Heads up. Count every card. Here we go.' : `${G.settings.players} players. Here we go.`);
+    await say('Here we go.');
     while (G.running) await playHand();
   } catch (e) {
     if (e !== STOP) { console.error(e); $('warn').textContent = 'Error: ' + e.message; }
@@ -590,7 +562,7 @@ function render() {
   $('sWindow').textContent = w.length ? `${Math.round(100 * w.filter(Boolean).length / w.length)}% (${w.length})` : '—';
   $('sPlayers').textContent = G.settings.players;
   $('sDecks').textContent = (G.shoe.length / 52 || 6).toFixed(1);
-  $('sUnits').textContent = (G.stats.units > 0 ? '+' : '') + G.stats.units;
+  $('sBank').textContent = '$' + G.stats.bank;
   $('sCount').textContent = G.showCount ? countWords(G.rc).replace('plus ', '+').replace('minus ', '−') : 'tap';
   $('manual').style.display = G.settings.mode === 'listen' ? 'none' : '';
 }
@@ -633,7 +605,7 @@ $('bets').onchange = e => { G.settings.bets = e.target.checked; save(); syncSett
 $('unit').onchange = e => { G.settings.unit = +e.target.value; save(); syncSettings(); };
 $('rate').oninput = e => { G.settings.rate = +e.target.value; save(); syncSettings(); };
 $('delay').oninput = e => { G.settings.delay = +e.target.value; save(); syncSettings(); };
-$('resetBtn').onclick = () => { if (confirm('Reset your count stats and go back to heads up?')) { G.stats = { window: [], total: 0, correct: 0, hands: 0, units: 0, betTotal: 0, betCorrect: 0 }; G.settings.players = 1; save(); syncSettings(); } };
+$('resetBtn').onclick = () => { if (confirm('Reset your stats, bankroll back to $500, and go back to heads up?')) { G.stats = { window: [], total: 0, correct: 0, hands: 0, bank: 500, betTotal: 0, betCorrect: 0 }; G.settings.players = 1; save(); syncSettings(); } };
 
 load();
 syncSettings();
